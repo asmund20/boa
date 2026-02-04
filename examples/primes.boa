@@ -1,0 +1,9 @@
+
+# Lists the range of numbers from 2 to 100, and assignes the name `numbers`
+numbers = range(2, 100) ;
+
+# Filters out the numbers that cannot be divided by any numbers lower than them selves.
+primes  = [p for p in numbers if not [m for m in numbers if p % m == 0 if m < p]];
+
+# Prints those numbers to the screen.
+print (primes)

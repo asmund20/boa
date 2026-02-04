@@ -1,0 +1,1 @@
+[Execute (Call "print" [Operation Plus (Constant (Number 2)) (Constant (Number 2))]),Execute (Variable "hello")]

@@ -1,0 +1,40 @@
+cabal-version:      3.0
+name:               boa
+version:            0.1.0.0
+
+license:            MIT
+author:             Student
+maintainer:         foo@uio.no
+
+category:           Language
+build-type:         Simple
+
+common dependencies
+  build-depends:
+      base ^>=4.18.1.0
+
+common testing-tools
+  build-depends:
+      tasty
+    , tasty-hunit
+    , tasty-quickcheck
+
+library
+    import:           dependencies
+    exposed-modules:  Syntax Interpreter Parser
+    hs-source-dirs:   src
+    default-language: Haskell2010
+
+executable boa
+    import:           dependencies
+    main-is:          Driver.hs
+    hs-source-dirs:   app src
+    default-language: Haskell2010
+
+test-suite boa-test
+    import:           dependencies
+    import:           testing-tools
+    default-language: Haskell2010
+    type:             exitcode-stdio-1.0
+    hs-source-dirs:   tests src
+    main-is:          Test.hs

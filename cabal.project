@@ -1,0 +1,7 @@
+packages: ./
+
+tests: True
+
+test-show-details: streaming
+test-options: --color always
+optimization: 2

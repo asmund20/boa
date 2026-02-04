@@ -1,0 +1,1 @@
+[Define "by3or5" (ListComprehension (Variable "n") [For "n" (Call "range" [Constant (Number 1000)]),If (Not (ListComprehension (Variable "_") [For "_" (Call "range" [Operation Mod (Variable "n") (Constant (Number 3))]),For "_" (Call "range" [Operation Mod (Variable "n") (Constant (Number 5))])]))]),Execute (Call "print" [Variable "by3or5"])]
