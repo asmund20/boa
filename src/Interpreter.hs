@@ -74,35 +74,53 @@ truthy (Text []) = False
 truthy (List []) = False
 truthy _ = True
 
--- data OperationSymbol =
--- Plus
--- \| Minus
--- \| Times
--- \| Div
--- \| Mod
--- \| Eq
--- \| Less
--- \| Greater
--- \| In
--- data Value =
--- None
--- \| Boolean Bool
--- \| Number  Integer
--- \| Text    String
--- \| List    [Value]
--- TODO
+boolToInt :: Bool -> Integer
+boolToInt False = 0
+boolToInt True = 1
+
 operate :: OperationSymbol -> Value -> Value -> Either ErrorMessage Value
 operate op None _ = Left $ "Operator " ++ show op ++ " with None in left argument."
 operate op _ None = Left $ "Operator " ++ show op ++ " with None in right argument."
-operate Plus (Number l) (Number r) = Right $ Number (l + r)
-operate Minus (Number l) (Number r) = Right $ Number (l - r)
-operate Times (Number l) (Number r) = Right $ Number (l * r)
-operate Div (Number l) (Number r) = Right $ Number (l `div` r)
-operate Mod (Number l) (Number r) = Right $ Number (l `mod` r)
+operate Plus (Number l) (Number r) = Right $ Number $ l + r
+operate Plus (Boolean l) (Boolean r) = Right $ Number $ (boolToInt l) + (boolToInt r)
+operate Plus (Boolean l) (Number r) = Right $ Number $ (boolToInt l) + r
+operate Plus (Number l) (Boolean r) = Right $ Number $ l + (boolToInt r)
+operate Plus (List l) (List r) = Right $ List $ l ++ r
+operate Plus (Text l) (Text r) = Right $ Text $ l ++ r
+operate Minus (Number l) (Number r) = Right $ Number $ l - r
+operate Minus (Boolean l) (Boolean r) = Right $ Number $ (boolToInt l) - (boolToInt r)
+operate Minus (Boolean l) (Number r) = Right $ Number $ (boolToInt l) - r
+operate Minus (Number l) (Boolean r) = Right $ Number $ l - (boolToInt r)
+operate Times (Number l) (Number r) = Right $ Number $ l * r
+operate Times (Boolean l) (Boolean r) = Right $ Number $ (boolToInt l) * (boolToInt r)
+operate Times (Boolean l) (Number r) = Right $ Number $ (boolToInt l) * r
+operate Times (Number l) (Boolean r) = Right $ Number $ l * (boolToInt r)
+operate Div (Number l) (Number r) = Right $ Number $ l `div` r
+operate Div (Boolean l) (Boolean r) = Right $ Number $ (boolToInt l) `div` (boolToInt r)
+operate Div (Boolean l) (Number r) = Right $ Number $ (boolToInt l) `div` r
+operate Div (Number l) (Boolean r) = Right $ Number $ l `div` (boolToInt r)
+operate Mod (Number l) (Number r) = Right $ Number $ l `mod` r
+operate Mod (Boolean l) (Boolean r) = Right $ Number $ (boolToInt l) `mod` (boolToInt r)
+operate Mod (Boolean l) (Number r) = Right $ Number $ (boolToInt l) `mod` r
+operate Mod (Number l) (Boolean r) = Right $ Number $ l `mod` (boolToInt r)
 operate Eq (Number l) (Number r) = Right $ Boolean $ l == r
+operate Eq (Boolean l) (Number r) = Right $ Boolean $ (boolToInt l) == r
+operate Eq (Number l) (Boolean r) = Right $ Boolean $ l == (boolToInt r)
 operate Eq (Boolean l) (Boolean r) = Right $ Boolean $ l == r
 operate Eq (Text l) (Text r) = Right $ Boolean $ l == r
 operate Eq (List l) (List r) = Right $ Boolean $ l == r
+operate Less (Boolean l) (Boolean r) = Right $ Boolean $ l < r
+operate Less (Number l) (Number r) = Right $ Boolean $ l < r
+operate Less (Text l) (Text r) = Right $ Boolean $ l < r
+operate Less (List l) (List r) = Right $ Boolean $ length l < length r
+operate Greater (Boolean l) (Boolean r) = Right $ Boolean $ l > r
+operate Greater (Number l) (Number r) = Right $ Boolean $ l > r
+operate Greater (Text l) (Text r) = Right $ Boolean $ l > r
+operate Greater (List l) (List r) = Right $ Boolean $ length l > length r
+operate In (List l) (List ((List r) : rs)) = Right $ Boolean $ elem (List l) ((List r) : rs)
+operate In (Number l) (List ((Number r) : rs)) = Right $ Boolean $ elem (Number l) ((Number r) : rs)
+operate In (Text l) (List ((Text r) : rs)) = Right $ Boolean $ elem (Text l) ((Text r) : rs)
+operate In (Boolean l) (List ((Boolean r) : rs)) = Right $ Boolean $ elem (Boolean l) ((Boolean r) : rs)
 operate op v1 v2 = Left $ "Operator " ++ show op ++ " with arguments " ++ show v1 ++ ", " ++ show v2 ++ "."
 
 apply :: FunctionName -> FunctionArguments -> Boa Value
