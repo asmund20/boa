@@ -1,9 +1,8 @@
 module Interpreter where
 
--- Skeleton file for Boa Interpreter. Edit only definitions with 'undefined'
-
 import Control.Monad
-import Data.List (find)
+import Data.List (find, intercalate, unwords)
+import Data.Maybe (catMaybes)
 import Syntax
 
 type Output = [String]
@@ -59,8 +58,11 @@ look var =
             )
         )
 
+-- type Environment = [(VariableName, Value)]
+-- type Runtime a = Environment -> (Either RuntimeError a, Output)
 bind :: VariableName -> Value -> (Boa a -> Boa a)
-bind = undefined
+bind name value = \action ->
+    Boa (\env -> let env' = (name, value) : env in run action env')
 
 output :: String -> Boa ()
 output s = Boa (const (Right mempty, [s]))
@@ -123,8 +125,28 @@ operate In (Text l) (List ((Text r) : rs)) = Right $ Boolean $ elem (Text l) ((T
 operate In (Boolean l) (List ((Boolean r) : rs)) = Right $ Boolean $ elem (Boolean l) ((Boolean r) : rs)
 operate op v1 v2 = Left $ "Operator " ++ show op ++ " with arguments " ++ show v1 ++ ", " ++ show v2 ++ "."
 
+prettyValue :: Value -> String
+prettyValue None = "None"
+prettyValue (Boolean True) = "True"
+prettyValue (Boolean False) = "False"
+prettyValue (Number n) = show n
+prettyValue (Text s) = s
+prettyValue (List vs) =
+    "[" ++ intercalate ", " (map prettyValue vs) ++ "]"
+
 apply :: FunctionName -> FunctionArguments -> Boa Value
-apply = undefined
+apply name arguments = case name of
+    "range" -> case arguments of
+        ((Number x) : []) -> return $ List [Number a | a <- [0 .. x - 1]]
+        ((Number x) : (Number y) : []) -> return $ List [Number a | a <- [x .. y - 1]]
+        ((Number x) : (Number y) : (Number z) : []) -> return $ List [Number a | a <- [x, x + z .. y - 1]]
+        _ -> abort $ BadArgument $ unwords $ map show arguments
+    "print" -> (output $ unwords $ map prettyValue arguments) >> return None
+    _ -> abort $ BadFunction name
+
+-- Helper function for managing environments in list comprehensions
+evalUnderContext :: [(VariableName, Value)] -> Expression -> Boa Value
+evalUnderContext context expr = foldr (\(n, v) acc -> bind n v acc) (eval expr) context
 
 -- Main functions of interpreter
 eval :: Expression -> Boa Value
@@ -135,7 +157,57 @@ eval (Operation op e1 e2) =
         case operate op v1 v2 of
             (Right value) -> return value
             (Left err) -> abort $ BadArgument err
-eval _ = undefined
+eval (Variable var) = look var
+eval (Constant a) = return a
+eval (Not e) = do
+    v <- fmap truthy $ eval e
+    case v of
+        False -> return $ Boolean True
+        True -> return $ Boolean False
+eval (Call name input) = do
+    args <- eval $ ListExpression input
+    case args of
+        List a -> apply name a
+eval (ListExpression []) = return $ List []
+eval (ListExpression (x : xs)) = do
+    x <- eval x
+    xs <- eval $ ListExpression xs
+    case xs of
+        List xs -> return $ List (x : xs)
+eval (ListComprehension e cs) = do
+    let initialContexts = [[]]
+
+    let processClauses context [] = return context
+        processClauses contexts (cl : rest) = case cl of
+            If condExpr -> do
+                keptContexts <-
+                    fmap catMaybes $
+                        mapM
+                            ( \ctx -> do
+                                val <- evalUnderContext ctx condExpr
+                                if truthy val
+                                    then return (Just ctx)
+                                    else return Nothing
+                            )
+                            contexts
+                processClauses keptContexts rest
+            For var iterableExpr -> do
+                expandedContextsList <-
+                    mapM
+                        ( \ctx -> do
+                            val <- evalUnderContext ctx iterableExpr
+                            case val of
+                                List elems -> return [(var, e) : ctx | e <- elems]
+                                other -> abort $ BadArgument $ "for needs a list, got " ++ show other
+                        )
+                        contexts
+                let newContexts = concat expandedContextsList
+                processClauses newContexts rest
+    finalContexts <- processClauses initialContexts cs
+
+    results <- mapM (\ctx -> evalUnderContext ctx e) finalContexts
+
+    return $ List results
 
 exec :: Program -> Boa ()
 exec [] = return ()
@@ -149,4 +221,6 @@ exec (Execute thing : program) =
         exec program
 
 execute :: Program -> (Output, Maybe RuntimeError)
-execute = undefined
+execute program = case run (exec program) [] of
+    (Right _, output) -> (output, Nothing)
+    (Left e, output) -> (output, Just e)
