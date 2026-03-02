@@ -1,0 +1,64 @@
+# Start grammar
+Program     ::= Statements
+Statements  ::= Statement
+              | Statement ';' Statements
+Statement   ::= ident '=' Expr
+              | Expr
+Expr        ::= numConst
+              | stringConst
+              | 'None' | 'True' | 'False'
+              | ident
+              | Expr Oper Expr
+              | 'not' Expr
+              | '(' Expr ')'
+              | ident '(' Exprz ')'
+              | '[' Exprz ']'
+              | '[' Expr ForClause Clausez ']'
+Oper        ::= '+'  | '-'  | '*' | '//' | '%'
+              | '==' | '!=' | '<' | '<=' | '>' | '>='
+              | 'in' | 'not' 'in'
+ForClause   ::= 'for' ident 'in' Expr
+IfClause    ::= 'if' Expr
+Clausez     ::= eps
+              | ForClause Clausez
+              | IfClause  Clausez
+Exprz       ::= eps
+              | Exprs
+Exprs       ::= Expr
+              | Expr ',' Exprs
+ident       ::= (see text)
+numConst    ::= (see text)
+stringConst ::= (see text)
+
+
+# Modified grammar
+Program     ::= Statements
+Statements  ::= Statement
+              | Statement ';' Statements
+Statement   ::= ident '=' Expr
+              | Expr
+Expr        ::= numConst
+              | stringConst
+              | 'None' | 'True' | 'False'
+              | ident
+              | Expr Oper Expr
+              | 'not' Expr
+              | '(' Expr ')'
+              | ident '(' Exprz ')'
+              | '[' Exprz ']'
+              | '[' Expr ForClause Clausez ']'
+Oper        ::= '+'  | '-'  | '*' | '//' | '%'
+              | '==' | '!=' | '<' | '<=' | '>' | '>='
+              | 'in' | 'not' 'in'
+ForClause   ::= 'for' ident 'in' Expr
+IfClause    ::= 'if' Expr
+Clausez     ::= eps
+              | ForClause Clausez
+              | IfClause  Clausez
+Exprz       ::= eps
+              | Exprs
+Exprs       ::= Expr
+              | Expr ',' Exprs
+ident       ::= (see text)
+numConst    ::= (see text)
+stringConst ::= (see text)
