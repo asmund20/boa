@@ -3,10 +3,9 @@
 module Parser (ParseError, parseString) where
 
 import Syntax
+import Text.ParserCombinators.Parsec
+
 -- add any other other imports you need
 
-type ParseError = String -- you may replace this
-
 parseString :: String -> Either ParseError Program
-parseString = undefined  -- define this
-
+parseString = undefined -- define this
