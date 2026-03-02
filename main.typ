@@ -6,7 +6,6 @@
 
 #align(center)[
   #title()
-  Åsmund Olai Sand-Larsen\
   #datetime.display(datetime.today())
 ]
 
