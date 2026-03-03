@@ -34,7 +34,7 @@ stringConst ::= (see text)
 
 
 
-..1. The logical-negation operator not. Nesting is allowed, so not not x < 3 parses like not (not (x < 3)).
+1. The logical-negation operator not. Nesting is allowed, so not not x < 3 parses like not (not (x < 3)).
 2. All relational operators (==, etc., including in and not``in). These are all non-associative, i.e., chains like x < y < z are syntactically illegal (unlike in Python).
 3. Additive arithmetic operators (+ and -). These are left-associative, e.g., x-y+z parses like (x-y)+z.
 4. Multiplicative arithmetic operators (*, //, and \%). These are also left-associative.
@@ -54,6 +54,16 @@ Expr          ::= numConst
                 | 'not' Expr
                 | '(' Expr ')'
                 | '[' ListBody ']'
+Expr          ::= ExprLiteral ExprEnd
+                | ident ArgsOrEps
+                | 'not' Expr
+                | '(' Expr ')'
+                | '[' ListBody ']'
+ExprEnd       ::= eps
+                | Oper Expr
+ExprLiteral   ::= numConst
+                | stringConst
+                | 'None' | 'True' | 'False'
 ArgsOrEps     ::= eps
                 | '(' Exprz ')'
 ListBody      ::= eps
