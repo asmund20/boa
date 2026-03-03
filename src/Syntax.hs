@@ -32,8 +32,11 @@ data OperationSymbol
     | Div
     | Mod
     | Eq
+    | NotEq
     | Less
+    | LessEq
     | Greater
+    | GreaterEq
     | In
     deriving (Eq, Show, Read)
 

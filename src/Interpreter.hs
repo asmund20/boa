@@ -119,6 +119,14 @@ operate Greater (Boolean l) (Boolean r) = Right $ Boolean $ l > r
 operate Greater (Number l) (Number r) = Right $ Boolean $ l > r
 operate Greater (Text l) (Text r) = Right $ Boolean $ l > r
 operate Greater (List l) (List r) = Right $ Boolean $ length l > length r
+operate LessEq (Boolean l) (Boolean r) = Right $ Boolean $ l <= r
+operate LessEq (Number l) (Number r) = Right $ Boolean $ l <= r
+operate LessEq (Text l) (Text r) = Right $ Boolean $ l <= r
+operate LessEq (List l) (List r) = Right $ Boolean $ length l <= length r
+operate GreaterEq (Boolean l) (Boolean r) = Right $ Boolean $ l >= r
+operate GreaterEq (Number l) (Number r) = Right $ Boolean $ l >= r
+operate GreaterEq (Text l) (Text r) = Right $ Boolean $ l >= r
+operate GreaterEq (List l) (List r) = Right $ Boolean $ length l >= length r
 operate In (List l) (List ((List r) : rs)) = Right $ Boolean $ elem (List l) ((List r) : rs)
 operate In (Number l) (List ((Number r) : rs)) = Right $ Boolean $ elem (Number l) ((Number r) : rs)
 operate In (Text l) (List ((Text r) : rs)) = Right $ Boolean $ elem (Text l) ((Text r) : rs)
