@@ -46,14 +46,6 @@ StatementsEnd ::= eps
                 | ';' Statements
 Statement     ::= ident '=' Expr
                 | Expr
-Expr          ::= numConst
-                | stringConst
-                | 'None' | 'True' | 'False'
-                | ident ArgsOrEps
-                | Expr Oper Expr
-                | 'not' Expr
-                | '(' Expr ')'
-                | '[' ListBody ']'
 Expr          ::= ExprLiteral ExprEnd
                 | ident ArgsOrEps
                 | 'not' Expr
