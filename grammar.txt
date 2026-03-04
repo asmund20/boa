@@ -46,16 +46,16 @@ StatementsEnd ::= eps
                 | ';' Statements
 Statement     ::= ident '=' Expr
                 | Expr
-Expr          ::= ExprLiteral ExprEnd
+Expr          ::= ExprPart ExprEnd
+ExprEnd       ::= eps
+                | Oper Expr
+ExprPart      ::= numConst
+                | 'None' | 'True' | 'False'
                 | ident ArgsOrEps
                 | 'not' Expr
                 | '(' Expr ')'
                 | '[' ListBody ']'
-ExprEnd       ::= eps
-                | Oper Expr
-ExprLiteral   ::= numConst
                 | stringConst
-                | 'None' | 'True' | 'False'
 ArgsOrEps     ::= eps
                 | '(' Exprz ')'
 ListBody      ::= eps

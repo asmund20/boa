@@ -53,14 +53,12 @@ statement =
             )
 
 {-
-Expr          ::= ExprLiteral ExprEnd
-                | ident ArgsOrEps
-                | 'not' Expr
-                | '(' Expr ')'
-                | '[' ListBody ']'
+Expr          ::= ExprPart ExprEnd
 -}
 expr :: Parser Expression
-expr = undefined
+expr = do
+    l <- exprPart
+    exprEnd l
 
 {-
 ExprEnd       ::= eps
@@ -72,7 +70,15 @@ ExprEnd       ::= eps
 -- 4. Multiplicative arithmetic operators (*, //, and \%). These are also left-associative.
 -- TODO: parse operator, and based on precedence class and stuff,
 exprEnd :: Expression -> Parser Expression
-exprEnd e = (expr) <|> return e
+exprEnd e1 =
+    ( do
+        o <- oper
+        e2 <- expr
+        -- TODO: Change this so precedence and associativity is as described in the list above by traversing and changing the ast.
+        -- Consider doing something else, ask gpt for possible approaches prolly
+        return $ Operation Plus e1 e2
+    )
+        <|> return e1
 
 -- Oper        ::= '+'  | '-'  | '*' | '//' | '%'
 -- /| '==' | '!=' | '<' | '<=' | '>' | '>='
@@ -92,23 +98,51 @@ oper = do
         '>' -> ((char '=') >> return GreaterEq) <|> return Greater
 
 {-
-ExprLiteral   ::= numConst
-                | stringConst
+ExprPart      ::= numConst
                 | 'None' | 'True' | 'False'
+                | ident ArgsOrEps
+                | 'not' Expr
+                | '(' Expr ')'
+                | '[' ListBody ']'
+                | stringConst
 -}
-exprLiteral :: Parser Expression
-exprLiteral =
+exprPart :: Parser Expression
+exprPart =
     numConst
-        <|> stringConst
         <|> (string "None" >> return (Constant None))
         <|> (string "True" >> return (Constant (Boolean True)))
         <|> (string "False" >> return (Constant (Boolean False)))
+        <|> ( do
+                i <- identifier
+                args <- argsOrEps
+                case args of
+                    Left args -> return $ Call i args
+                    Right _ -> return $ Variable i
+            )
+        <|> ( do
+                _ <- string "not"
+                e <- expr
+                return $ Not e
+            )
+        <|> ( do
+                _ <- char '('
+                e <- expr
+                _ <- char ')'
+                return e
+            )
+        <|> ( do
+                _ <- char '['
+                lb <- listBody
+                _ <- char ']'
+                return lb
+            )
+        <|> stringConst
 
 {-
 ArgsOrEps     ::= eps
                 | '(' Exprz ')'
 -}
-argsOrEps :: Parser [Expression]
+argsOrEps :: Parser (Either [Expression] ())
 argsOrEps =
     ( do
         _ <- char '('
@@ -116,8 +150,9 @@ argsOrEps =
         e <- exprz
         _ <- spaces
         _ <- char ')'
-        return e
+        return $ Left e
     )
+        <|> (return $ Right ())
 
 {-
 ListBody      ::= eps
@@ -256,4 +291,4 @@ escapedSingleQuote = do
     return '\''
 
 parseString :: String -> Either ParseError Program
-parseString = undefined -- define this
+parseString = parse (program <* eof) "input"
