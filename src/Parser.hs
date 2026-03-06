@@ -1,168 +1,152 @@
--- Skeleton file for Boa Parser.
-
+-- |  Skeleton file for Boa Parser.
 module Parser (ParseError, parseString) where
 
+import Data.List.NonEmpty (cons)
 import Syntax
 import Text.ParserCombinators.Parsec
 
--- add any other other imports you need
--- Program       ::= Statements
+{- |  add any other other imports you need
+|  Program       ::= Statements
+-}
 program :: Parser Program
 program = statements
 
--- Statements    ::= Statement StatementsEnd
+-- |  Statements    ::= Statement [ ; Statements ]
 statements :: Parser [Statement]
-statements = do
-    _ <- many comment
-    x <- statement
-    xs <- statementsEnd
-    _ <- many comment
-    return (x : xs)
+statements = sepBy1 statement (char ';')
 
 comment :: Parser ()
-comment = spaces >> (char '#') >> many (noneOf "\n\r") >> newline >> return ()
+comment = spaces >> char '#' >> many (noneOf "\n\r") >> newline >> return ()
 
-{-
-StatementsEnd ::= eps
-                | ';' Statements
--}
-statementsEnd :: Parser [Statement]
-statementsEnd =
-    ( do
-        _ <- char ';'
-        xs <- statements
-        return xs
-    )
-        <|> return []
+charSpaces :: Char -> Parser Char
+charSpaces c = spaces >> char 'c' >> spaces >> return c
 
-{-
-Statement     ::= ident '=' Expr
-                | Expr
--}
+-- |  Statement     ::= ident '=' Expr | Expr
 statement :: Parser Statement
-statement =
-    ( do
+statement = do
+    _ <- many comment
+    s <- (assign <|> expression)
+    _ <- many comment
+    return s
+  where
+    assign = do
         i <- identifier
-        _ <- char '='
+        _ <- charSpaces '='
         e <- expr
         return $ Define i e
-    )
-        <|> ( do
-                e <- expr
-                return $ Execute e
-            )
+    expression = do
+        e <- expr
+        return $ Execute e
 
-{-
-Expr          ::= ExprPart ExprEnd
--}
+notExpr :: Parser Expression
+notExpr = do
+    _ <- string "not"
+    e <- expr
+    return $ Not e
+
+-- |  Expr          ::= 'not' Expr | RelPart [ RelOper Expr ]
 expr :: Parser Expression
-expr = do
-    l <- exprPart
-    exprEnd l
-
-{-
-ExprEnd       ::= eps
-                | Oper Expr
--}
--- 1. The logical-negation operator not. Nesting is allowed, so not not x < 3 parses like not (not (x < 3)).
--- 2. All relational operators (==, etc., including in and not``in). These are all non-associative, i.e., chains like x < y < z are syntactically illegal (unlike in Python).
--- 3. Additive arithmetic operators (+ and -). These are left-associative, e.g., x-y+z parses like (x-y)+z.
--- 4. Multiplicative arithmetic operators (*, //, and \%). These are also left-associative.
--- TODO: parse operator, and based on precedence class and stuff,
-exprEnd :: Expression -> Parser Expression
-exprEnd e1 =
-    ( do
-        o <- oper
+expr = consumeSpaces (notExpr <|> binExpr)
+  where
+    binExpr = do
+        e <- relPart
+        m <- optionMaybe relOper
+        case m of
+            Nothing -> return e
+            Just o -> rightExpr o e
+    rightExpr os e1 = do
         e2 <- expr
-        -- TODO: Change this so precedence and associativity is as described in the list above by traversing and changing the ast.
-        -- Consider doing something else, ask gpt for possible approaches prolly
-        return $ Operation Plus e1 e2
-    )
-        <|> return e1
+        return $ Operation os e1 e2
 
--- Oper        ::= '+'  | '-'  | '*' | '//' | '%'
--- /| '==' | '!=' | '<' | '<=' | '>' | '>='
-oper :: Parser OperationSymbol
-oper = do
-    _ <- spaces
-    c <- (oneOf "+-*/%=!<>")
-    case c of
-        '+' -> return Plus
-        '-' -> return Minus
-        '*' -> return Times
-        '/' -> (char '/') >> return Div
-        '%' -> return Mod
-        '=' -> (char '=') >> return Eq
-        '!' -> (char '=') >> return NotEq
-        '<' -> ((char '=') >> return LessEq) <|> return Less
-        '>' -> ((char '=') >> return GreaterEq) <|> return Greater
+-- |  RelPart       ::= Term [ AddOper Expr ]
+relPart :: Parser Expression
+relPart = notExpr <|> chainl1 term addOper
+
+-- | Term          ::= ExprLiteral [ MultOper Expr ]
+term :: Parser Expression
+term = notExpr <|> chainl1 exprLiteral multOper
+
+{- |
+ExprLiteral   ::= numConst
+                | stringConst
+                | 'None' | 'True' | 'False'
+                | ident [ '(' Exprz ')' ]
+                | '(' Expr ')'
+                | '[' [Expr ListBodyEnd] ']'
+-}
+exprLiteral :: Parser Expression
+exprLiteral = notExpr <|> numConst <|> stringConst <|> none <|> true <|> false <|> ident <|> parenExpr <|> list
+  where
+    none = string "None" >> return (Constant None)
+    true = string "True" >> return (Constant $ Boolean True)
+    false = string "False" >> return (Constant $ Boolean False)
+    ident = do
+        s <- identifier
+        m <- optionMaybe params
+        case m of
+            Nothing -> return $ Variable s
+            Just ps -> return $ Call s ps
+    params = do
+        _ <- char '('
+        es <- sepBy expr (char ',')
+        _ <- char ')'
+        return es
+    parenExpr = char '(' >> expr <* char ')'
+    list = do
+        _ <- char '['
+        listBody
 
 {-
-ExprPart      ::= numConst
-                | 'None' | 'True' | 'False'
-                | ident ArgsOrEps
-                | 'not' Expr
-                | '(' Expr ')'
-                | '[' ListBody ']'
-                | stringConst
--}
-exprPart :: Parser Expression
-exprPart =
-    numConst
-        <|> (string "None" >> return (Constant None))
-        <|> (string "True" >> return (Constant (Boolean True)))
-        <|> (string "False" >> return (Constant (Boolean False)))
-        <|> ( do
-                i <- identifier
-                args <- argsOrEps
-                case args of
-                    Left args -> return $ Call i args
-                    Right _ -> return $ Variable i
-            )
-        <|> ( do
-                _ <- string "not"
-                e <- expr
-                return $ Not e
-            )
-        <|> ( do
-                _ <- char '('
-                e <- expr
-                _ <- char ')'
-                return e
-            )
         <|> ( do
                 _ <- char '['
-                lb <- listBody
+                lb <- optionMaybe listBody
                 _ <- char ']'
-                return lb
+                case lb of
+                    Nothing -> return $ ListExpression []
+                    Just list -> return list
             )
         <|> stringConst
+        -}
 
-{-
-ArgsOrEps     ::= eps
-                | '(' Exprz ')'
--}
-argsOrEps :: Parser (Either [Expression] ())
-argsOrEps =
-    ( do
-        _ <- char '('
-        _ <- spaces
-        e <- exprz
-        _ <- spaces
-        _ <- char ')'
-        return $ Left e
-    )
-        <|> (return $ Right ())
+consumeSpaces :: Parser a -> Parser a
+consumeSpaces p = do
+    _ <- spaces
+    r <- p
+    _ <- spaces
+    return r
 
-{-
-ListBody      ::= eps
-                | Expr ListBodyEnd
--}
+-- |  MultOper      ::= '*'  | '//' | '%  |
+multOper :: Parser (Expression -> Expression -> Expression)
+multOper = consumeSpaces times <|> consumeSpaces div <|> consumeSpaces mod
+  where
+    times = char '*' >> return (\e1 e2 -> Operation Times e1 e2)
+    div = string "//" >> return (\e1 e2 -> Operation Div e1 e2)
+    mod = char '%' >> return (\e1 e2 -> Operation Mod e1 e2)
+
+-- |  AddOper       ::= '+'  | '-'
+addOper :: Parser (Expression -> Expression -> Expression)
+addOper = consumeSpaces plus <|> consumeSpaces minus
+  where
+    plus = char '+' >> return (\e1 e2 -> Operation Plus e1 e2)
+    minus = char '-' >> return (\e1 e2 -> Operation Minus e1 e2)
+
+-- |  RelOper       ::= '==' | '!=' | '<' [ '=' ] | '>' [ '=' ] | 'in' | 'not' 'in'
+relOper :: Parser OperationSymbol
+relOper = consumeSpaces eq <|> consumeSpaces notEq <|> consumeSpaces lessEq <|> consumeSpaces greaterEq
+  where
+    eq = string "==" >> return Eq
+    notEq = string "!=" >> return NotEq
+    lessEq = char '<' >> ((char '=' >> return LessEq) <|> return Less)
+    greaterEq = char '>' >> ((char '=' >> return GreaterEq) <|> return Greater)
+
+-- | ListBody      ::= Expr ListBodyEnd
 listBody :: Parser Expression
 listBody =
     ( do
-        e <- expr
-        listBodyEnd e
+        m <- optionMaybe expr
+        case m of
+            Nothing -> return $ ListExpression []
+            Just e -> listBodyEnd e
     )
 
 {-
@@ -170,20 +154,17 @@ ListBodyEnd   ::= Exprz
                 | ForClause Clausez
 -}
 listBodyEnd :: Expression -> Parser Expression
-listBodyEnd e =
-    ( do
+listBodyEnd e = clauses <|> cse
+  where
+    clauses = do
         c <- forClause
-        cs <- clausez
+        cs <- many (forClause <|> ifClause)
         return $ ListComprehension e (c : cs)
-    )
-        <|> ( do
-                es <- exprz
-                return $ ListExpression (e : es)
-            )
+    cse = do
+        es <- sepBy expr (char ',')
+        return $ ListExpression (e : es)
 
-{-
-ForClause     ::= 'for' ident 'in' Expr
--}
+-- | ForClause     ::= 'for' ident 'in' Expr
 forClause :: Parser Clause
 forClause = do
     _ <- string "for"
@@ -192,51 +173,12 @@ forClause = do
     e <- expr
     return $ For ident e
 
-{-
-IfClause      ::= 'if' Expr
--}
+-- | IfClause      ::= 'if' Expr
 ifClause :: Parser Clause
 ifClause = do
     _ <- string "if"
     e <- expr
     return $ If e
-
-{-
-Clausez       ::= eps
-                | ForClause Clausez
-                | IfClause  Clausez
--}
-clausez :: Parser [Clause]
-clausez = do
-    c <- (forClause <|> ifClause)
-    cs <- clausez
-    return (c : cs) <|> return []
-
-{-
-Exprz         ::= eps
-                | Exprs
--}
-exprz :: Parser [Expression]
-exprz = many expr
-
-{-
-Exprs         ::= Expr ExprsEnd
--}
-exprs :: Parser [Expression]
-exprs = do
-    e <- expr
-    es <- exprsEnd
-    return (e : es)
-
-{-
-ExprsEnd      ::= eps
-                | ',' Exprs
--}
-exprsEnd :: Parser [Expression]
-exprsEnd = do
-    _ <- char ','
-    es <- exprs
-    return es
 
 {-
 ident         ::= (see text)
@@ -264,9 +206,8 @@ wholeNumber =
 
 naturalNumber :: Parser Integer
 naturalNumber = do
-    leading <- oneOf "123456789"
-    trailing <- many digit
-    return $ read (leading : trailing)
+    s <- many1 digit
+    return $ read s
 
 {-
 stringConst   ::= (see text)
@@ -277,18 +218,15 @@ stringConst = do
     s <- many $ (noneOf "'\\" <|> escapedBackSlash <|> escapedSingleQuote)
     _ <- char '\''
     return $ Constant $ Text s
-
-escapedBackSlash :: Parser Char
-escapedBackSlash = do
-    _ <- char '\\'
-    _ <- char '\\'
-    return '\\'
-
-escapedSingleQuote :: Parser Char
-escapedSingleQuote = do
-    _ <- char '\\'
-    _ <- char '\''
-    return '\''
+  where
+    escapedBackSlash = do
+        _ <- char '\\'
+        _ <- char '\\'
+        return '\\'
+    escapedSingleQuote = do
+        _ <- char '\\'
+        _ <- char '\''
+        return '\''
 
 parseString :: String -> Either ParseError Program
 parseString = parse (program <* eof) "input"
