@@ -1,3 +1,5 @@
+{- HLINT ignore "Use <$>" -}
+
 -- |  Skeleton file for Boa Parser.
 module Parser (ParseError, parseString) where
 
@@ -25,7 +27,7 @@ charSpaces c = spaces >> char 'c' >> spaces >> return c
 statement :: Parser Statement
 statement = do
     _ <- many comment
-    s <- (assign <|> expression)
+    s <- assign <|> expression
     _ <- many comment
     return s
   where
@@ -119,16 +121,16 @@ consumeSpaces p = do
 multOper :: Parser (Expression -> Expression -> Expression)
 multOper = consumeSpaces times <|> consumeSpaces div <|> consumeSpaces mod
   where
-    times = char '*' >> return (\e1 e2 -> Operation Times e1 e2)
-    div = string "//" >> return (\e1 e2 -> Operation Div e1 e2)
-    mod = char '%' >> return (\e1 e2 -> Operation Mod e1 e2)
+    times = char '*' >> return (Operation Times)
+    div = string "//" >> return (Operation Div)
+    mod = char '%' >> return (Operation Mod)
 
 -- |  AddOper       ::= '+'  | '-'
 addOper :: Parser (Expression -> Expression -> Expression)
 addOper = consumeSpaces plus <|> consumeSpaces minus
   where
-    plus = char '+' >> return (\e1 e2 -> Operation Plus e1 e2)
-    minus = char '-' >> return (\e1 e2 -> Operation Minus e1 e2)
+    plus = char '+' >> return (Operation Plus)
+    minus = char '-' >> return (Operation Minus)
 
 -- |  RelOper       ::= '==' | '!=' | '<' [ '=' ] | '>' [ '=' ] | 'in' | 'not' 'in'
 relOper :: Parser OperationSymbol
@@ -141,13 +143,11 @@ relOper = consumeSpaces eq <|> consumeSpaces notEq <|> consumeSpaces lessEq <|> 
 
 -- | ListBody      ::= Expr ListBodyEnd
 listBody :: Parser Expression
-listBody =
-    ( do
-        m <- optionMaybe expr
-        case m of
-            Nothing -> return $ ListExpression []
-            Just e -> listBodyEnd e
-    )
+listBody = do
+    m <- optionMaybe expr
+    case m of
+        Nothing -> return $ ListExpression []
+        Just e -> listBodyEnd e
 
 {-
 ListBodyEnd   ::= Exprz
@@ -185,8 +185,8 @@ ident         ::= (see text)
 -}
 identifier :: Parser String
 identifier = do
-    x <- letter <|> (char '_')
-    xs <- many $ letter <|> digit <|> (char '_')
+    x <- letter <|> char '_'
+    xs <- many $ letter <|> digit <|> char '_'
     return (x : xs)
 
 {-
@@ -215,7 +215,7 @@ stringConst   ::= (see text)
 stringConst :: Parser Expression
 stringConst = do
     _ <- char '\''
-    s <- many $ (noneOf "'\\" <|> escapedBackSlash <|> escapedSingleQuote)
+    s <- many (noneOf "'\\" <|> escapedBackSlash <|> escapedSingleQuote)
     _ <- char '\''
     return $ Constant $ Text s
   where
