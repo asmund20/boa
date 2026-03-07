@@ -28,14 +28,17 @@ library
 
 executable boa
     import:           dependencies
+    build-depends:    boa
     main-is:          Driver.hs
-    hs-source-dirs:   app src
+    hs-source-dirs:   app
     default-language: Haskell2010
 
 test-suite boa-test
     import:           dependencies
     import:           testing-tools
+    build-depends:    boa
     default-language: Haskell2010
     type:             exitcode-stdio-1.0
-    hs-source-dirs:   tests src
+    hs-source-dirs:   tests
     main-is:          Test.hs
+    other-modules:    InterpreterTests
