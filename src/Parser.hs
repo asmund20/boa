@@ -1,8 +1,7 @@
-{- HLINT ignore "Use <$>" -}
-
 -- |  Skeleton file for Boa Parser.
 module Parser (ParseError, parseString) where
 
+import Control.Monad
 import Data.List.NonEmpty (cons)
 import Syntax
 import Text.ParserCombinators.Parsec
@@ -18,33 +17,38 @@ statements :: Parser [Statement]
 statements = sepBy1 statement (char ';')
 
 comment :: Parser ()
-comment = spaces >> char '#' >> many (noneOf "\n\r") >> newline >> return ()
-
-charSpaces :: Char -> Parser Char
-charSpaces c = spaces >> char 'c' >> spaces >> return c
+comment = void (char '#' >> manyTill anyChar newline)
 
 -- |  Statement     ::= ident '=' Expr | Expr
 statement :: Parser Statement
-statement = do
-    _ <- many comment
-    s <- assign <|> expression
-    _ <- many comment
-    return s
+statement = skipMany (skipMany1 space <|> comment) >> ((Execute <$> notExpr) <|> binExprOrAssign)
   where
-    assign = do
-        i <- identifier
-        _ <- charSpaces '='
-        e <- expr
-        return $ Define i e
-    expression = do
-        e <- expr
-        return $ Execute e
+    binExprOrAssign = do
+        e <- relPart
+        case e of
+            Variable i -> execOrAssign i
+            _ -> Execute <$> binExprRightPart Nothing e
 
-notExpr :: Parser Expression
-notExpr = do
-    _ <- string "not"
-    e <- expr
-    return $ Not e
+    execOrAssign i = do
+        m <- optionMaybe $ char '='
+        case m of
+            Nothing -> Execute <$> binExprRightPart Nothing (Variable i)
+            Just _ -> do
+                m' <- optionMaybe $ char '='
+                case m' of
+                    Nothing -> Define i <$> expr
+                    Just _ -> Execute <$> binExprRightPart (Just Eq) (Variable i)
+
+binExprRightPart :: Maybe OperationSymbol -> Expression -> Parser Expression
+binExprRightPart om e1 = case om of
+    Nothing -> do
+        m <- optionMaybe relOper
+        case m of
+            Nothing -> return e1
+            Just o -> binExpSecondExp e1 o
+    Just o -> binExpSecondExp e1 o
+  where
+    binExpSecondExp e1 o = Operation o e1 <$> relPart
 
 -- |  Expr          ::= 'not' Expr | RelPart [ RelOper Expr ]
 expr :: Parser Expression
@@ -55,18 +59,20 @@ expr = consumeSpaces (notExpr <|> binExpr)
         m <- optionMaybe relOper
         case m of
             Nothing -> return e
-            Just o -> rightExpr o e
-    rightExpr os e1 = do
-        e2 <- expr
-        return $ Operation os e1 e2
+            Just o -> binExprRightPart (Just o) e
+
+notExpr :: Parser Expression
+notExpr = do
+    _ <- try $ string "not"
+    Not <$> expr
 
 -- |  RelPart       ::= Term [ AddOper Expr ]
 relPart :: Parser Expression
-relPart = notExpr <|> chainl1 term addOper
+relPart = consumeSpaces (notExpr <|> chainl1 term addOper)
 
 -- | Term          ::= ExprLiteral [ MultOper Expr ]
 term :: Parser Expression
-term = notExpr <|> chainl1 exprLiteral multOper
+term = consumeSpaces (notExpr <|> chainl1 exprLiteral multOper)
 
 {- |
 ExprLiteral   ::= numConst
@@ -77,7 +83,7 @@ ExprLiteral   ::= numConst
                 | '[' [Expr ListBodyEnd] ']'
 -}
 exprLiteral :: Parser Expression
-exprLiteral = notExpr <|> numConst <|> stringConst <|> none <|> true <|> false <|> ident <|> parenExpr <|> list
+exprLiteral = consumeSpaces (notExpr <|> numConst <|> stringConst <|> none <|> true <|> false <|> ident <|> parenExpr <|> list)
   where
     none = string "None" >> return (Constant None)
     true = string "True" >> return (Constant $ Boolean True)
@@ -96,19 +102,9 @@ exprLiteral = notExpr <|> numConst <|> stringConst <|> none <|> true <|> false <
     parenExpr = char '(' >> expr <* char ')'
     list = do
         _ <- char '['
-        listBody
-
-{-
-        <|> ( do
-                _ <- char '['
-                lb <- optionMaybe listBody
-                _ <- char ']'
-                case lb of
-                    Nothing -> return $ ListExpression []
-                    Just list -> return list
-            )
-        <|> stringConst
-        -}
+        b <- listBody
+        _ <- char ']'
+        return b
 
 consumeSpaces :: Parser a -> Parser a
 consumeSpaces p = do
@@ -119,7 +115,7 @@ consumeSpaces p = do
 
 -- |  MultOper      ::= '*'  | '//' | '%  |
 multOper :: Parser (Expression -> Expression -> Expression)
-multOper = consumeSpaces times <|> consumeSpaces div <|> consumeSpaces mod
+multOper = consumeSpaces (times <|> div <|> mod)
   where
     times = char '*' >> return (Operation Times)
     div = string "//" >> return (Operation Div)
@@ -127,19 +123,21 @@ multOper = consumeSpaces times <|> consumeSpaces div <|> consumeSpaces mod
 
 -- |  AddOper       ::= '+'  | '-'
 addOper :: Parser (Expression -> Expression -> Expression)
-addOper = consumeSpaces plus <|> consumeSpaces minus
+addOper = consumeSpaces (plus <|> minus)
   where
     plus = char '+' >> return (Operation Plus)
     minus = char '-' >> return (Operation Minus)
 
 -- |  RelOper       ::= '==' | '!=' | '<' [ '=' ] | '>' [ '=' ] | 'in' | 'not' 'in'
 relOper :: Parser OperationSymbol
-relOper = consumeSpaces eq <|> consumeSpaces notEq <|> consumeSpaces lessEq <|> consumeSpaces greaterEq
+relOper = consumeSpaces (eq <|> notEq <|> lessEq <|> greaterEq <|> inOper <|> notInOper)
   where
     eq = string "==" >> return Eq
     notEq = string "!=" >> return NotEq
     lessEq = char '<' >> ((char '=' >> return LessEq) <|> return Less)
     greaterEq = char '>' >> ((char '=' >> return GreaterEq) <|> return Greater)
+    inOper = try $ string "in" >> return In
+    notInOper = string "not" >> spaces >> string "in" >> return NotIn
 
 -- | ListBody      ::= Expr ListBodyEnd
 listBody :: Parser Expression
@@ -157,34 +155,34 @@ listBodyEnd :: Expression -> Parser Expression
 listBodyEnd e = clauses <|> cse
   where
     clauses = do
-        c <- forClause
-        cs <- many (forClause <|> ifClause)
+        c <- consumeSpaces forClause
+        cs <- many $ consumeSpaces (forClause <|> ifClause)
         return $ ListComprehension e (c : cs)
     cse = do
-        es <- sepBy expr (char ',')
-        return $ ListExpression (e : es)
+        m <- optionMaybe $ char ','
+        case m of
+            Nothing -> return $ ListExpression [e]
+            Just _ -> do
+                es <- sepBy expr (char ',')
+                return $ ListExpression (e : es)
 
 -- | ForClause     ::= 'for' ident 'in' Expr
 forClause :: Parser Clause
 forClause = do
-    _ <- string "for"
+    _ <- consumeSpaces $ string "for"
     ident <- identifier
     _ <- string "in"
-    e <- expr
-    return $ For ident e
+    For ident <$> expr
 
 -- | IfClause      ::= 'if' Expr
 ifClause :: Parser Clause
-ifClause = do
-    _ <- string "if"
-    e <- expr
-    return $ If e
+ifClause = string "if" >> If <$> expr
 
 {-
 ident         ::= (see text)
 -}
 identifier :: Parser String
-identifier = do
+identifier = consumeSpaces $ do
     x <- letter <|> char '_'
     xs <- many $ letter <|> digit <|> char '_'
     return (x : xs)
@@ -193,9 +191,7 @@ identifier = do
 numConst      ::= (see text)
 -}
 numConst :: Parser Expression
-numConst = do
-    n <- wholeNumber
-    return $ Constant $ Number n
+numConst = Constant . Number <$> wholeNumber
 
 wholeNumber :: Parser Integer
 wholeNumber =
@@ -205,9 +201,7 @@ wholeNumber =
         return $ -n
 
 naturalNumber :: Parser Integer
-naturalNumber = do
-    s <- many1 digit
-    return $ read s
+naturalNumber = read <$> many1 digit
 
 {-
 stringConst   ::= (see text)
@@ -215,18 +209,12 @@ stringConst   ::= (see text)
 stringConst :: Parser Expression
 stringConst = do
     _ <- char '\''
-    s <- many (noneOf "'\\" <|> escapedBackSlash <|> escapedSingleQuote)
+    s <- many (noneOf "'\\" <|> backSlashOrSingleQuote)
     _ <- char '\''
     return $ Constant $ Text s
   where
-    escapedBackSlash = do
-        _ <- char '\\'
-        _ <- char '\\'
-        return '\\'
-    escapedSingleQuote = do
-        _ <- char '\\'
-        _ <- char '\''
-        return '\''
+    backSlashOrSingleQuote :: Parser Char
+    backSlashOrSingleQuote = char '\\' >> oneOf "\\\'"
 
 parseString :: String -> Either ParseError Program
 parseString = parse (program <* eof) "input"
