@@ -38,6 +38,7 @@ data OperationSymbol
     | Greater
     | GreaterEq
     | In
+    | NotIn
     deriving (Eq, Show, Read)
 
 data Clause

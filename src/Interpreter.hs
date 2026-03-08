@@ -131,6 +131,10 @@ operate In (List l) (List ((List r) : rs)) = Right $ Boolean $ elem (List l) (Li
 operate In (Number l) (List ((Number r) : rs)) = Right $ Boolean $ elem (Number l) (Number r : rs)
 operate In (Text l) (List ((Text r) : rs)) = Right $ Boolean $ elem (Text l) (Text r : rs)
 operate In (Boolean l) (List ((Boolean r) : rs)) = Right $ Boolean $ elem (Boolean l) (Boolean r : rs)
+operate NotIn (List l) (List ((List r) : rs)) = Right $ Boolean $ notElem (List l) (List r : rs)
+operate NotIn (Number l) (List ((Number r) : rs)) = Right $ Boolean $ notElem (Number l) (Number r : rs)
+operate NotIn (Text l) (List ((Text r) : rs)) = Right $ Boolean $ notElem (Text l) (Text r : rs)
+operate NotIn (Boolean l) (List ((Boolean r) : rs)) = Right $ Boolean $ notElem (Boolean l) (Boolean r : rs)
 operate op v1 v2 = Left $ "Operator " ++ show op ++ " with arguments " ++ show v1 ++ ", " ++ show v2 ++ "."
 
 prettyValue :: Value -> String
