@@ -1,6 +1,7 @@
 module Interpreter where
 
 import Control.Monad
+import Data.Bits (Bits (xor))
 import Data.List (find, intercalate, unwords)
 import Data.Maybe (catMaybes)
 import Syntax
@@ -61,8 +62,7 @@ look var =
 -- type Environment = [(VariableName, Value)]
 -- type Runtime a = Environment -> (Either RuntimeError a, Output)
 bind :: VariableName -> Value -> (Boa a -> Boa a)
-bind name value = \action ->
-    Boa (\env -> let env' = (name, value) : env in run action env')
+bind name value action = Boa (\env -> let env' = (name, value) : env in run action env')
 
 output :: String -> Boa ()
 output s = Boa (const (Right mempty, [s]))
@@ -84,30 +84,30 @@ operate :: OperationSymbol -> Value -> Value -> Either ErrorMessage Value
 operate op None _ = Left $ "Operator " ++ show op ++ " with None in left argument."
 operate op _ None = Left $ "Operator " ++ show op ++ " with None in right argument."
 operate Plus (Number l) (Number r) = Right $ Number $ l + r
-operate Plus (Boolean l) (Boolean r) = Right $ Number $ (boolToInt l) + (boolToInt r)
-operate Plus (Boolean l) (Number r) = Right $ Number $ (boolToInt l) + r
-operate Plus (Number l) (Boolean r) = Right $ Number $ l + (boolToInt r)
+operate Plus (Boolean l) (Boolean r) = Right $ Number $ boolToInt l + boolToInt r
+operate Plus (Boolean l) (Number r) = Right $ Number $ boolToInt l + r
+operate Plus (Number l) (Boolean r) = Right $ Number $ l + boolToInt r
 operate Plus (List l) (List r) = Right $ List $ l ++ r
 operate Plus (Text l) (Text r) = Right $ Text $ l ++ r
 operate Minus (Number l) (Number r) = Right $ Number $ l - r
-operate Minus (Boolean l) (Boolean r) = Right $ Number $ (boolToInt l) - (boolToInt r)
-operate Minus (Boolean l) (Number r) = Right $ Number $ (boolToInt l) - r
-operate Minus (Number l) (Boolean r) = Right $ Number $ l - (boolToInt r)
+operate Minus (Boolean l) (Boolean r) = Right $ Number $ boolToInt l - boolToInt r
+operate Minus (Boolean l) (Number r) = Right $ Number $ boolToInt l - r
+operate Minus (Number l) (Boolean r) = Right $ Number $ l - boolToInt r
 operate Times (Number l) (Number r) = Right $ Number $ l * r
-operate Times (Boolean l) (Boolean r) = Right $ Number $ (boolToInt l) * (boolToInt r)
-operate Times (Boolean l) (Number r) = Right $ Number $ (boolToInt l) * r
-operate Times (Number l) (Boolean r) = Right $ Number $ l * (boolToInt r)
+operate Times (Boolean l) (Boolean r) = Right $ Number $ boolToInt l * boolToInt r
+operate Times (Boolean l) (Number r) = Right $ Number $ boolToInt l * r
+operate Times (Number l) (Boolean r) = Right $ Number $ l * boolToInt r
 operate Div (Number l) (Number r) = Right $ Number $ l `div` r
-operate Div (Boolean l) (Boolean r) = Right $ Number $ (boolToInt l) `div` (boolToInt r)
-operate Div (Boolean l) (Number r) = Right $ Number $ (boolToInt l) `div` r
-operate Div (Number l) (Boolean r) = Right $ Number $ l `div` (boolToInt r)
+operate Div (Boolean l) (Boolean r) = Right $ Number $ boolToInt l `div` boolToInt r
+operate Div (Boolean l) (Number r) = Right $ Number $ boolToInt l `div` r
+operate Div (Number l) (Boolean r) = Right $ Number $ l `div` boolToInt r
 operate Mod (Number l) (Number r) = Right $ Number $ l `mod` r
-operate Mod (Boolean l) (Boolean r) = Right $ Number $ (boolToInt l) `mod` (boolToInt r)
-operate Mod (Boolean l) (Number r) = Right $ Number $ (boolToInt l) `mod` r
-operate Mod (Number l) (Boolean r) = Right $ Number $ l `mod` (boolToInt r)
+operate Mod (Boolean l) (Boolean r) = Right $ Number $ boolToInt l `mod` boolToInt r
+operate Mod (Boolean l) (Number r) = Right $ Number $ boolToInt l `mod` r
+operate Mod (Number l) (Boolean r) = Right $ Number $ l `mod` boolToInt r
 operate Eq (Number l) (Number r) = Right $ Boolean $ l == r
-operate Eq (Boolean l) (Number r) = Right $ Boolean $ (boolToInt l) == r
-operate Eq (Number l) (Boolean r) = Right $ Boolean $ l == (boolToInt r)
+operate Eq (Boolean l) (Number r) = Right $ Boolean $ boolToInt l == r
+operate Eq (Number l) (Boolean r) = Right $ Boolean $ l == boolToInt r
 operate Eq (Boolean l) (Boolean r) = Right $ Boolean $ l == r
 operate Eq (Text l) (Text r) = Right $ Boolean $ l == r
 operate Eq (List l) (List r) = Right $ Boolean $ l == r
@@ -127,10 +127,10 @@ operate GreaterEq (Boolean l) (Boolean r) = Right $ Boolean $ l >= r
 operate GreaterEq (Number l) (Number r) = Right $ Boolean $ l >= r
 operate GreaterEq (Text l) (Text r) = Right $ Boolean $ l >= r
 operate GreaterEq (List l) (List r) = Right $ Boolean $ length l >= length r
-operate In (List l) (List ((List r) : rs)) = Right $ Boolean $ elem (List l) ((List r) : rs)
-operate In (Number l) (List ((Number r) : rs)) = Right $ Boolean $ elem (Number l) ((Number r) : rs)
-operate In (Text l) (List ((Text r) : rs)) = Right $ Boolean $ elem (Text l) ((Text r) : rs)
-operate In (Boolean l) (List ((Boolean r) : rs)) = Right $ Boolean $ elem (Boolean l) ((Boolean r) : rs)
+operate In (List l) (List ((List r) : rs)) = Right $ Boolean $ elem (List l) (List r : rs)
+operate In (Number l) (List ((Number r) : rs)) = Right $ Boolean $ elem (Number l) (Number r : rs)
+operate In (Text l) (List ((Text r) : rs)) = Right $ Boolean $ elem (Text l) (Text r : rs)
+operate In (Boolean l) (List ((Boolean r) : rs)) = Right $ Boolean $ elem (Boolean l) (Boolean r : rs)
 operate op v1 v2 = Left $ "Operator " ++ show op ++ " with arguments " ++ show v1 ++ ", " ++ show v2 ++ "."
 
 prettyValue :: Value -> String
@@ -145,11 +145,11 @@ prettyValue (List vs) =
 apply :: FunctionName -> FunctionArguments -> Boa Value
 apply name arguments = case name of
     "range" -> case arguments of
-        ((Number x) : []) -> return $ List [Number a | a <- [0 .. x - 1]]
-        ((Number x) : (Number y) : []) -> return $ List [Number a | a <- [x .. y - 1]]
-        ((Number x) : (Number y) : (Number z) : []) -> return $ List [Number a | a <- [x, x + z .. y - 1]]
+        [Number x] -> return $ List [Number a | a <- [0 .. x - 1]]
+        [Number x, Number y] -> return $ List [Number a | a <- [x .. y - 1]]
+        [Number x, Number y, Number z] -> return $ List [Number a | a <- [x, x + z .. y - 1]]
         _ -> abort $ BadArgument $ unwords $ map show arguments
-    "print" -> (output $ unwords $ map prettyValue arguments) >> return None
+    "print" -> output (unwords $ map prettyValue arguments) >> return None
     _ -> abort $ BadFunction name
 
 -- Helper function for managing environments in list comprehensions
@@ -168,10 +168,8 @@ eval (Operation op e1 e2) =
 eval (Variable var) = look var
 eval (Constant a) = return a
 eval (Not e) = do
-    v <- fmap truthy $ eval e
-    case v of
-        False -> return $ Boolean True
-        True -> return $ Boolean False
+    v <- truthy <$> eval e
+    return $ Boolean (not v)
 eval (Call name input) = do
     args <- eval $ ListExpression input
     case args of
@@ -189,8 +187,8 @@ eval (ListComprehension e cs) = do
         processClauses contexts (cl : rest) = case cl of
             If condExpr -> do
                 keptContexts <-
-                    fmap catMaybes $
-                        mapM
+                    catMaybes
+                        <$> mapM
                             ( \ctx -> do
                                 val <- evalUnderContext ctx condExpr
                                 if truthy val
@@ -213,7 +211,7 @@ eval (ListComprehension e cs) = do
                 processClauses newContexts rest
     finalContexts <- processClauses initialContexts cs
 
-    results <- mapM (\ctx -> evalUnderContext ctx e) finalContexts
+    results <- mapM (`evalUnderContext` e) finalContexts
 
     return $ List results
 
