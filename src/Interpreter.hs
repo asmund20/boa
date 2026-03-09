@@ -1,7 +1,6 @@
 module Interpreter where
 
 import Control.Monad
-import Data.Bits (Bits (xor))
 import Data.List (find, intercalate, unwords)
 import Data.Maybe (catMaybes)
 import Syntax
