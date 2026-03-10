@@ -1,4 +1,3 @@
--- |  Skeleton file for Boa Parser.
 module Parser (ParseError, parseString) where
 
 import Control.Monad
@@ -6,9 +5,7 @@ import Data.List.NonEmpty (cons)
 import Syntax
 import Text.ParserCombinators.Parsec
 
-{- |  add any other other imports you need
-|  Program       ::= Statements
--}
+-- |  Program       ::= Statements
 program :: Parser Program
 program = statements
 
@@ -23,12 +20,15 @@ comment = void (char '#' >> manyTill anyChar newline)
 statement :: Parser Statement
 statement = skipMany (skipMany1 space <|> comment) >> ((Execute <$> notExpr) <|> binExprOrAssign)
   where
+    binExprOrAssign :: Parser Statement
     binExprOrAssign = do
         e <- relPart
         case e of
             Variable i -> execOrAssign i
             _ -> Execute <$> binExprRightPart Nothing e
 
+    -- \| Here, assign statement and equality-expressions are left-factorized by trying to parse "==" and '=' after an identifier
+    execOrAssign :: VariableName -> Parser Statement
     execOrAssign i = do
         m <- optionMaybe $ char '='
         case m of
@@ -48,12 +48,14 @@ binExprRightPart om e1 = case om of
             Just o -> binExpSecondExp e1 o
     Just o -> binExpSecondExp e1 o
   where
+    binExpSecondExp :: Expression -> OperationSymbol -> Parser Expression
     binExpSecondExp e1 o = Operation o e1 <$> relPart
 
 -- |  Expr          ::= 'not' Expr | RelPart [ RelOper Expr ]
 expr :: Parser Expression
 expr = consumeSpaces (notExpr <|> binExpr)
   where
+    binExpr :: Parser Expression
     binExpr = do
         e <- relPart
         m <- optionMaybe relOper
@@ -85,58 +87,64 @@ ExprLiteral   ::= numConst
 exprLiteral :: Parser Expression
 exprLiteral = consumeSpaces (notExpr <|> numConst <|> stringConst <|> none <|> true <|> false <|> ident <|> parenExpr <|> list)
   where
+    none :: Parser Expression
     none = string "None" >> return (Constant None)
+    true :: Parser Expression
     true = string "True" >> return (Constant $ Boolean True)
+    false :: Parser Expression
     false = string "False" >> return (Constant $ Boolean False)
+    ident :: Parser Expression
     ident = do
         s <- identifier
         m <- optionMaybe params
         case m of
             Nothing -> return $ Variable s
             Just ps -> return $ Call s ps
-    params = do
-        _ <- char '('
-        es <- sepBy expr (char ',')
-        _ <- char ')'
-        return es
-    parenExpr = char '(' >> expr <* char ')'
-    list = do
-        _ <- char '['
-        b <- listBody
-        _ <- char ']'
-        return b
+    params :: Parser [Expression]
+    params = between (char '(') (char ')') (sepBy expr (char ','))
+    parenExpr :: Parser Expression
+    parenExpr = between (char '(') (char ')') expr
+    list :: Parser Expression
+    list = between (char '(') (char ')') listBody
 
 consumeSpaces :: Parser a -> Parser a
-consumeSpaces p = do
-    _ <- spaces
-    r <- p
-    _ <- spaces
-    return r
+consumeSpaces p = between spaces spaces p
 
 -- |  MultOper      ::= '*'  | '//' | '%  |
 multOper :: Parser (Expression -> Expression -> Expression)
 multOper = consumeSpaces (times <|> div <|> mod)
   where
+    times :: Parser (Expression -> Expression -> Expression)
     times = char '*' >> return (Operation Times)
+    div :: Parser (Expression -> Expression -> Expression)
     div = string "//" >> return (Operation Div)
+    mod :: Parser (Expression -> Expression -> Expression)
     mod = char '%' >> return (Operation Mod)
 
 -- |  AddOper       ::= '+'  | '-'
 addOper :: Parser (Expression -> Expression -> Expression)
 addOper = consumeSpaces (plus <|> minus)
   where
+    plus :: Parser (Expression -> Expression -> Expression)
     plus = char '+' >> return (Operation Plus)
+    minus :: Parser (Expression -> Expression -> Expression)
     minus = char '-' >> return (Operation Minus)
 
 -- |  RelOper       ::= '==' | '!=' | '<' [ '=' ] | '>' [ '=' ] | 'in' | 'not' 'in'
 relOper :: Parser OperationSymbol
 relOper = consumeSpaces (eq <|> notEq <|> lessEq <|> greaterEq <|> inOper <|> notInOper)
   where
+    eq :: Parser OperationSymbol
     eq = string "==" >> return Eq
+    notEq :: Parser OperationSymbol
     notEq = string "!=" >> return NotEq
+    lessEq :: Parser OperationSymbol
     lessEq = char '<' >> ((char '=' >> return LessEq) <|> return Less)
+    greaterEq :: Parser OperationSymbol
     greaterEq = char '>' >> ((char '=' >> return GreaterEq) <|> return Greater)
+    inOper :: Parser OperationSymbol
     inOper = try $ string "in" >> return In
+    notInOper :: Parser OperationSymbol
     notInOper = string "not" >> spaces >> string "in" >> return NotIn
 
 -- | ListBody      ::= Expr ListBodyEnd
@@ -152,13 +160,15 @@ ListBodyEnd   ::= Exprz
                 | ForClause Clausez
 -}
 listBodyEnd :: Expression -> Parser Expression
-listBodyEnd e = clauses <|> cse
+listBodyEnd e = clauses <|> commaSepExprs
   where
+    clauses :: Parser Expression
     clauses = do
         c <- consumeSpaces forClause
         cs <- many $ consumeSpaces (forClause <|> ifClause)
         return $ ListComprehension e (c : cs)
-    cse = do
+    commaSepExprs :: Parser Expression
+    commaSepExprs = do
         m <- optionMaybe $ char ','
         case m of
             Nothing -> return $ ListExpression [e]
@@ -178,40 +188,26 @@ forClause = do
 ifClause :: Parser Clause
 ifClause = string "if" >> If <$> expr
 
-{-
-ident         ::= (see text)
--}
 identifier :: Parser String
 identifier = consumeSpaces $ do
     x <- letter <|> char '_'
     xs <- many $ letter <|> digit <|> char '_'
     return (x : xs)
 
-{-
-numConst      ::= (see text)
--}
 numConst :: Parser Expression
 numConst = Constant . Number <$> wholeNumber
+  where
+    wholeNumber :: Parser Integer
+    wholeNumber =
+        naturalNumber <|> do
+            _ <- char '-'
+            n <- naturalNumber
+            return $ -n
+    naturalNumber :: Parser Integer
+    naturalNumber = read <$> many1 digit
 
-wholeNumber :: Parser Integer
-wholeNumber =
-    naturalNumber <|> do
-        _ <- char '-'
-        n <- naturalNumber
-        return $ -n
-
-naturalNumber :: Parser Integer
-naturalNumber = read <$> many1 digit
-
-{-
-stringConst   ::= (see text)
--}
 stringConst :: Parser Expression
-stringConst = do
-    _ <- char '\''
-    s <- many (noneOf "'\\" <|> backSlashOrSingleQuote)
-    _ <- char '\''
-    return $ Constant $ Text s
+stringConst = Constant . Text <$> between (char '\'') (char '\'') (many (noneOf "'\\" <|> backSlashOrSingleQuote))
   where
     backSlashOrSingleQuote :: Parser Char
     backSlashOrSingleQuote = char '\\' >> oneOf "\\\'"
