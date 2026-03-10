@@ -105,7 +105,7 @@ exprLiteral = consumeSpaces (notExpr <|> numConst <|> stringConst <|> none <|> t
     parenExpr :: Parser Expression
     parenExpr = between (char '(') (char ')') expr
     list :: Parser Expression
-    list = between (char '(') (char ')') listBody
+    list = between (char '[') (char ']') listBody
 
 consumeSpaces :: Parser a -> Parser a
 consumeSpaces p = between spaces spaces p
