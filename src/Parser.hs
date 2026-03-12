@@ -2,7 +2,9 @@ module Parser (ParseError, parseString) where
 
 import Control.Monad
 import Data.List.NonEmpty (cons)
+import Data.Maybe
 import Syntax
+import Text.Parsec.Char (endOfLine)
 import Text.ParserCombinators.Parsec
 
 -- |  Program       ::= Statements
@@ -207,10 +209,24 @@ numConst = Constant . Number <$> wholeNumber
     naturalNumber = read <$> many1 digit
 
 stringConst :: Parser Expression
-stringConst = Constant . Text <$> between (char '\'') (char '\'') (many (noneOf "'\\" <|> backSlashOrSingleQuote))
+stringConst = Constant . Text <$> between (char '\'') (char '\'') body
   where
-    backSlashOrSingleQuote :: Parser Char
-    backSlashOrSingleQuote = char '\\' >> oneOf "\\\'"
+    body :: Parser String
+    body = catMaybes <$> (many (allowedChar <|> backSlashOrSingleQuote))
+    allowedChar :: Parser (Maybe Char)
+    allowedChar = Just <$> (noneOf "'\\\n\r'")
+    backSlashOrSingleQuote :: Parser (Maybe Char)
+    backSlashOrSingleQuote = do
+        _ <- char '\\'
+        m <- optionMaybe endOfLine
+        case m of
+            Just _ -> return Nothing
+            Nothing -> do
+                n <- oneOf "'\\n"
+                case n of
+                    '\\' -> return $ Just '\\'
+                    '\'' -> return $ Just '\''
+                    'n' -> return $ Just '\n'
 
 parseString :: String -> Either ParseError Program
 parseString = parse (program <* eof) "input"
