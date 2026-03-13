@@ -60,7 +60,26 @@ sizedProgram decls n = do
     return (s1 ++ spaces1 ++ ';' : spaces2 ++ ss, emptyDecls)
 
 sizedExpression :: Decls -> Int -> Gen String
-sizedExpression = undefined
+sizedExpression decls 0 = exprLiteral decls
+sizedExpression decls n = undefined
+
+exprLiteral :: Decls -> Gen String
+exprLiteral decls = oneof [numConst, sized stringConst, none, true, false, ident]
+  where
+    numConst = show <$> arbitrarySizedNatural
+    stringConst size = do
+        n <- choose (0, size)
+        vectorOf
+            n
+            -- TODO: finish the stringConst generator
+            ( frequency
+                [ (1, elements $ ['a' .. 'z'] ++ ['A' .. 'Z'])
+                ]
+            )
+    none = return "None"
+    true = return "True"
+    false = return "True"
+    ident = elements $ Set.toList decls
 
 genEndOfline :: Gen String
 genEndOfline =
@@ -79,31 +98,3 @@ genSpaces = do
     n <- choose (0, 6)
     s <- vectorOf n genSpace
     return $ foldl (++) [] s
-
-{-}
-sizedExpression :: Decls -> Int -> Gen Expression
-sizedExpression emptyDecls 0 = arbitrary >>= (\x -> return $ Constant x)
-sizedExpression decls 0 = oneof [identf, constant]
-  where
-    identf = elements $ map Variable identifiers
-    constant = arbitrary >>= (\x -> return $ Constant x)
-sizedExpression identifiers n =
-    frequency
-        [
-            ( 1
-            , do
-                let i = "var_" ++ (show $ length identifiers)
-                e1 <- sizedExpression identifiers $ n `div` 5
-                e2 <- sizedExpression (i : identifiers) $ 4 * n `div` 5
-                return $ Let i e1 e2
-            )
-        ,
-            ( 1
-            , do
-                e1 <- sizedExpression identifiers $ n `div` 2
-                e2 <- sizedExpression identifiers $ n `div` 2
-                o <- arbitrary
-                return $ Operator o e1 e2
-            )
-        ]
--}
