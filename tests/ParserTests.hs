@@ -61,11 +61,6 @@ sizedProgram decls 0 = oneof [assignment, expression]
             , (1, return '_')
             , (1, elements ['0' .. '9'])
             ]
-    identGen :: Gen String
-    identGen = do
-        c <- identStartGen
-        cs <- listOf identBodypartGen
-        return (c : cs)
 sizedProgram decls n = do
     (s1, decls') <- sizedProgram decls 0
     (ss, _) <- sizedProgram decls' (n - 1)
@@ -73,10 +68,17 @@ sizedProgram decls n = do
     spaces2 <- genSpaces
     return (s1 ++ spaces1 ++ ';' : spaces2 ++ ss, emptyDecls)
 
+identGen :: Gen String
+identGen = do
+    c <- identStartGen
+    cs <- listOf identBodypartGen
+    return (c : cs)
+
 sizedExpression :: Decls -> Int -> Gen String
 sizedExpression decls 0 = exprLiteral decls
 sizedExpression decls n = typedSizedExpression TAny decls n
 
+-- TODO: All typedSizedExpression should have the possibility of choosing an identifier with the correct type
 -- data BoaType = TNone | TBoolean | TNumber | TText | TList | TAny
 typedSizedExpression :: BoaType -> Decls -> Int -> Gen String
 typedSizedExpression TNone _ 0 = return "None"
@@ -131,7 +133,14 @@ typedSizedExpression TList decls n = oneof [listExp, listComprehension, rangeCal
         s1 <- genSpaces
         s2 <- genSpaces
         return $ "range" ++ '(' : s1 ++ csv ++ s2 ++ ")"
-    genForClause = undefined
+    genForClause :: Gen (String, Decls)
+    genForClause = do
+        i <- identGen
+        l <- typedSizedExpression TList decls (n `div` 2)
+        s1 <- genSpaces
+        s2 <- genSpaces
+        s3 <- genSpaces
+        return ("for " ++ s1 ++ i ++ " in " ++ s2 ++ l, Map.insert i TAny emptyDecls)
     genIfClause = undefined
     genClauses clauseLength expLength = do
         c <- oneof [genForClause genIfClause]
