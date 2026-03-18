@@ -7,6 +7,9 @@ import Syntax
 import Text.Parsec.Char (endOfLine)
 import Text.ParserCombinators.Parsec
 
+data NonAbstractOperationSymbol = NotEq | LessEq | GreaterEq | NotIn
+data ConcreteOperationSymbol = Abstract OperationSymbol | Concrete NonAbstractOperationSymbol
+
 -- |  Program       ::= Statements
 program :: Parser Program
 program = statements
@@ -39,9 +42,9 @@ statement = skipMany (skipMany1 space <|> comment) >> ((Execute <$> notExpr) <|>
                 m' <- optionMaybe $ char '='
                 case m' of
                     Nothing -> Define i <$> expr
-                    Just _ -> Execute <$> binExprRightPart (Just Eq) (Variable i)
+                    Just _ -> Execute <$> binExprRightPart (Just $ Abstract Eq) (Variable i)
 
-binExprRightPart :: Maybe OperationSymbol -> Expression -> Parser Expression
+binExprRightPart :: Maybe ConcreteOperationSymbol -> Expression -> Parser Expression
 binExprRightPart om e1 = case om of
     Nothing -> do
         m <- optionMaybe relOper
@@ -50,8 +53,21 @@ binExprRightPart om e1 = case om of
             Just o -> binExpSecondExp e1 o
     Just o -> binExpSecondExp e1 o
   where
-    binExpSecondExp :: Expression -> OperationSymbol -> Parser Expression
-    binExpSecondExp e1 o = Operation o e1 <$> relPart
+    binExpSecondExp :: Expression -> ConcreteOperationSymbol -> Parser Expression
+    binExpSecondExp e1 o = do
+        e2 <- relPart
+        case o of
+            -- The cases where there is no operator in the abstract syntax
+            -- that does the same as the concrete syntax operator
+            Concrete NotIn -> return $ Not $ Operation In e1 e2
+            Concrete GreaterEq -> return $ Not $ Operation Less e1 e2
+            Concrete LessEq -> return $ Not $ Operation Greater e1 e2
+            Concrete NotEq -> return $ Not $ Operation Eq e1 e2
+            -- The cases where there is an abstract operation symbol for the concrete ones
+            _ -> return $ Operation (concreteToAbstract o) e1 e2
+    -- \| Mapping from a concrete syntax operation symbol to the equivalent
+    concreteToAbstract :: ConcreteOperationSymbol -> OperationSymbol
+    concreteToAbstract (Abstract o) = o
 
 -- |  Expr          ::= 'not' Expr | RelPart [ RelOper Expr ]
 expr :: Parser Expression
@@ -67,7 +83,7 @@ expr = consumeSpaces (notExpr <|> binExpr)
 
 notExpr :: Parser Expression
 notExpr = do
-    _ <- try $ string "not"
+    _ <- try $ string "not "
     Not <$> expr
 
 -- |  RelPart       ::= Term [ AddOper Expr ]
@@ -133,21 +149,21 @@ addOper = consumeSpaces (plus <|> minus)
     minus = char '-' >> return (Operation Minus)
 
 -- |  RelOper       ::= '==' | '!=' | '<' [ '=' ] | '>' [ '=' ] | 'in' | 'not' 'in'
-relOper :: Parser OperationSymbol
+relOper :: Parser ConcreteOperationSymbol
 relOper = consumeSpaces (eq <|> notEq <|> lessEq <|> greaterEq <|> inOper <|> notInOper)
   where
-    eq :: Parser OperationSymbol
-    eq = string "==" >> return Eq
-    notEq :: Parser OperationSymbol
-    notEq = string "!=" >> return NotEq
-    lessEq :: Parser OperationSymbol
-    lessEq = char '<' >> ((char '=' >> return LessEq) <|> return Less)
-    greaterEq :: Parser OperationSymbol
-    greaterEq = char '>' >> ((char '=' >> return GreaterEq) <|> return Greater)
-    inOper :: Parser OperationSymbol
-    inOper = try $ string "in" >> return In
-    notInOper :: Parser OperationSymbol
-    notInOper = string "not" >> spaces >> string "in" >> return NotIn
+    eq :: Parser ConcreteOperationSymbol
+    eq = string "==" >> return (Abstract Eq)
+    notEq :: Parser ConcreteOperationSymbol
+    notEq = string "!=" >> return (Concrete NotEq)
+    lessEq :: Parser ConcreteOperationSymbol
+    lessEq = char '<' >> ((char '=' >> return (Concrete LessEq)) <|> return (Abstract Less))
+    greaterEq :: Parser ConcreteOperationSymbol
+    greaterEq = char '>' >> ((char '=' >> return (Concrete GreaterEq)) <|> return (Abstract Greater))
+    inOper :: Parser ConcreteOperationSymbol
+    inOper = try (string " in") >> return (Abstract In)
+    notInOper :: Parser ConcreteOperationSymbol
+    notInOper = string "not" >> spaces >> string "in" >> return (Concrete NotIn)
 
 -- | ListBody      ::= Expr ListBodyEnd
 listBody :: Parser Expression

@@ -96,14 +96,30 @@ operate Times (Number l) (Number r) = Right $ Number $ l * r
 operate Times (Boolean l) (Boolean r) = Right $ Number $ boolToInt l * boolToInt r
 operate Times (Boolean l) (Number r) = Right $ Number $ boolToInt l * r
 operate Times (Number l) (Boolean r) = Right $ Number $ l * boolToInt r
-operate Div (Number l) (Number r) = Right $ Number $ l `div` r
-operate Div (Boolean l) (Boolean r) = Right $ Number $ boolToInt l `div` boolToInt r
-operate Div (Boolean l) (Number r) = Right $ Number $ boolToInt l `div` r
-operate Div (Number l) (Boolean r) = Right $ Number $ l `div` boolToInt r
-operate Mod (Number l) (Number r) = Right $ Number $ l `mod` r
-operate Mod (Boolean l) (Boolean r) = Right $ Number $ boolToInt l `mod` boolToInt r
-operate Mod (Boolean l) (Number r) = Right $ Number $ boolToInt l `mod` r
-operate Mod (Number l) (Boolean r) = Right $ Number $ l `mod` boolToInt r
+operate Div (Number l) (Number r) = case r of
+    0 -> Left "Division by zero"
+    _ -> Right $ Number $ l `div` r
+operate Div (Boolean l) (Boolean r) = case r of
+    False -> Left "Division by zero"
+    True -> Right $ Number $ boolToInt l `div` boolToInt r
+operate Div (Boolean l) (Number r) = case r of
+    0 -> Left "Division by zero"
+    _ -> Right $ Number $ boolToInt l `div` r
+operate Div (Number l) (Boolean r) = case r of
+    False -> Left "Division by zero"
+    _ -> Right $ Number $ l `div` boolToInt r
+operate Mod (Number l) (Number r) = case r of
+    0 -> Left "Modulo by zero"
+    _ -> Right $ Number $ l `mod` r
+operate Mod (Boolean l) (Boolean r) = case r of
+    False -> Left "Modulo by zero"
+    True -> Right $ Number $ boolToInt l `mod` boolToInt r
+operate Mod (Boolean l) (Number r) = case r of
+    0 -> Left "Modulo by zero"
+    _ -> Right $ Number $ boolToInt l `mod` r
+operate Mod (Number l) (Boolean r) = case r of
+    False -> Left "Modulo by zero"
+    _ -> Right $ Number $ l `mod` boolToInt r
 operate Eq (Number l) (Number r) = Right $ Boolean $ l == r
 operate Eq (Boolean l) (Number r) = Right $ Boolean $ boolToInt l == r
 operate Eq (Number l) (Boolean r) = Right $ Boolean $ l == boolToInt r
@@ -118,22 +134,10 @@ operate Greater (Boolean l) (Boolean r) = Right $ Boolean $ l > r
 operate Greater (Number l) (Number r) = Right $ Boolean $ l > r
 operate Greater (Text l) (Text r) = Right $ Boolean $ l > r
 operate Greater (List l) (List r) = Right $ Boolean $ length l > length r
-operate LessEq (Boolean l) (Boolean r) = Right $ Boolean $ l <= r
-operate LessEq (Number l) (Number r) = Right $ Boolean $ l <= r
-operate LessEq (Text l) (Text r) = Right $ Boolean $ l <= r
-operate LessEq (List l) (List r) = Right $ Boolean $ length l <= length r
-operate GreaterEq (Boolean l) (Boolean r) = Right $ Boolean $ l >= r
-operate GreaterEq (Number l) (Number r) = Right $ Boolean $ l >= r
-operate GreaterEq (Text l) (Text r) = Right $ Boolean $ l >= r
-operate GreaterEq (List l) (List r) = Right $ Boolean $ length l >= length r
 operate In (List l) (List ((List r) : rs)) = Right $ Boolean $ elem (List l) (List r : rs)
 operate In (Number l) (List ((Number r) : rs)) = Right $ Boolean $ elem (Number l) (Number r : rs)
 operate In (Text l) (List ((Text r) : rs)) = Right $ Boolean $ elem (Text l) (Text r : rs)
 operate In (Boolean l) (List ((Boolean r) : rs)) = Right $ Boolean $ elem (Boolean l) (Boolean r : rs)
-operate NotIn (List l) (List ((List r) : rs)) = Right $ Boolean $ notElem (List l) (List r : rs)
-operate NotIn (Number l) (List ((Number r) : rs)) = Right $ Boolean $ notElem (Number l) (Number r : rs)
-operate NotIn (Text l) (List ((Text r) : rs)) = Right $ Boolean $ notElem (Text l) (Text r : rs)
-operate NotIn (Boolean l) (List ((Boolean r) : rs)) = Right $ Boolean $ notElem (Boolean l) (Boolean r : rs)
 operate op v1 v2 = Left $ "Operator " ++ show op ++ " with arguments " ++ show v1 ++ ", " ++ show v2 ++ "."
 
 prettyValue :: Value -> String
