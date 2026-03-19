@@ -120,42 +120,38 @@ typedSizedExpression TList decls n = oneof [listExp, listComprehension, rangeCal
         s1 <- genSpaces
         s2 <- genSpaces
         return ('[' : s1 ++ csv ++ s2 ++ "]", t)
-    listComprehension = undefined {-do
-                                  -- I want to do this by first generating the clauses.
-                                  -- The for clauses all generate a valid identifier for a
-                                  -- TNumber, these should be returned and used as the
-                                  -- environment, probably with a selection of the Number
-                                  -- identifiers that already exist for creating the expression
-                                  partitioning <- choose (1, 10)
-                                  let expLength = n `div` partitioning
-                                  let clauseLength = n - expLength
-                                  (e, c) <- genForClause
-                                  cs <- genClauses clauseLength expLength
-                                  s1 <- genSpaces
-                                  s2 <- genSpaces
-                                  s3 <- genSpaces
-                                  s4 <- genSpaces
-                                  return $ '[' : s1 ++ e ++ s2 ++ c ++ s3 ++ cs ++ s4 ++ "]"
-                                  -}
+    listComprehension = do
+        partitioning <- choose (1, 10)
+        let expLength = n `div` partitioning
+        let clauseLength = n - expLength
+        (c, decls'') <- genForClause expLength decls
+        (cs, decls') <- genClauses clauseLength expLength decls''
+        (e, t) <- typedSizedExpression TAny decls' expLength
+        s1 <- genSpaces
+        s2 <- genSpaces1
+        s3 <- genSpaces
+        return ('[' : s1 ++ e ++ s2 ++ cs ++ s3 ++ "]", t)
     rangeCall = do
         params <- choose (1, 3)
         (csv, _) <- genCsvExprs TNumber params decls (n `div` params)
         s1 <- genSpaces
         s2 <- genSpaces
-        return ("range" ++ '(' : s1 ++ csv ++ s2 ++ ")", TNumber)
+        s3 <- genSpaces
+        return ("range" ++ s1 ++ '(' : s2 ++ csv ++ s3 ++ ")", TNumber)
     genForClause :: Int -> Decls -> Gen (String, Decls)
     genForClause expLength d = do
         i <- identGen
         (l, t) <- typedSizedExpression TList d expLength
-        s1 <- genSpaces
-        s2 <- genSpaces
-        s3 <- genSpaces
-        return ("for " ++ s1 ++ i ++ " in " ++ s2 ++ l, Map.insert i t d)
+        s1 <- genSpaces1
+        s2 <- genSpaces1
+        s3 <- genSpaces1
+        return ("for" ++ s1 ++ i ++ s2 ++ "in" ++ s3 ++ l, Map.insert i t d)
     genIfClause :: Int -> Decls -> Gen (String, Decls)
     genIfClause expLength d = do
         (e, _) <- oneof [typedSizedExpression TAny d expLength, typedSizedExpression TBoolean d expLength]
-        s1 <- genSpaces
-        return $ ("if " ++ s1 ++ e, decls)
+        s1 <- genSpaces1
+        return $ ("if" ++ s1 ++ e, decls)
+    genClauses :: Int -> Int -> Decls -> Gen (String, Decls)
     genClauses clauseLength expLength = undefined {-do
                                                   (c, _) <- oneof [genForClause genIfClause]
                                                   cs <- genClauses (clauseLength - 1) expLength
@@ -175,7 +171,7 @@ typedSizedExpression t decls n = oneof [binaryExp, notExp, parenExp, typedSizedE
         return (el ++ s1 ++ o ++ s2 ++ er, t)
     notExp = do
         (e, _) <- typedSizedExpression t decls (n - 1)
-        s <- genSpaces
+        s <- genSpaces1
         return ("not" ++ s ++ e, TBoolean)
     parenExp = do
         (e, _) <- typedSizedExpression t decls (n - 1)
@@ -316,3 +312,8 @@ genSpaces = do
     n <- choose (0, 6)
     s <- vectorOf n genSpace
     return $ concat s
+
+genSpaces1 :: Gen String
+genSpaces1 = do
+    s <- genSpaces
+    return $ ' ' : s
