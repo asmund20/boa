@@ -9,7 +9,8 @@ import Test.Tasty.QuickCheck
 
 newtype BoaProgram = P String deriving (Show, Eq)
 
-data BoaType = TNone | TBoolean | TNumber | TText | TList | TAny deriving (Eq, Show)
+data BoaType = TNone | TBoolean | TNumber | TText | TList | TAny
+    deriving (Eq, Show)
 
 type Decls = Map.Map String BoaType
 
@@ -29,7 +30,14 @@ instance Arbitrary BoaProgram where
         return $ P s
 
 genType :: Gen BoaType
-genType = oneof [return TNone, return TBoolean, return TNumber, return TText, return TList]
+genType =
+    oneof
+        [ return TNone
+        , return TBoolean
+        , return TNumber
+        , return TText
+        , return TList
+        ]
 
 sizedProgram :: Decls -> Int -> Gen (String, Decls)
 sizedProgram decls 0 = oneof [assignment, expression]
@@ -85,9 +93,14 @@ sizedExpression decls n = do
 
 -- TODO: All typedSizedExpression should have the possibility of choosing an identifier with the correct type
 -- data BoaType = TNone | TBoolean | TNumber | TText | TList | TAny
-typedSizedExpression :: BoaType -> Decls -> Int -> Gen (String, BoaType)
+typedSizedExpression ::
+    BoaType -> Decls -> Int -> Gen (String, BoaType)
 typedSizedExpression TNone _ 0 = return ("None", TNone)
-typedSizedExpression TBoolean _ 0 = oneof [return ("True", TBoolean), return ("False", TBoolean)]
+typedSizedExpression TBoolean _ 0 =
+    oneof
+        [ return ("True", TBoolean)
+        , return ("False", TBoolean)
+        ]
 typedSizedExpression TNumber _ 0 = do
     n <- show <$> arbitrarySizedNatural
     return $ (n, TNumber)
@@ -99,7 +112,11 @@ typedSizedExpression TAny decls 0 = exprLiteral decls
 typedSizedExpression TAny decls n = do
     t <- genType
     typedSizedExpression t decls n
-typedSizedExpression TNone decls n = frequency [(1, return ("None", TNone)), (2, printCall)]
+typedSizedExpression TNone decls n =
+    frequency
+        [ (1, return ("None", TNone))
+        , (2, printCall)
+        ]
   where
     printCall = do
         partitioning <- choose (1, 10)
@@ -147,20 +164,31 @@ typedSizedExpression TList decls n = oneof [listExp, listComprehension, rangeCal
         s3 <- genSpaces1
         return ("for" ++ s1 ++ i ++ s2 ++ "in" ++ s3 ++ l, Map.insert i t d)
     genIfClause :: Int -> Decls -> Gen (String, Decls)
-    genIfClause expLength d = do
-        (e, _) <- oneof [typedSizedExpression TAny d expLength, typedSizedExpression TBoolean d expLength]
+    genIfClause expLength decls = do
+        (e, _) <-
+            oneof
+                [ typedSizedExpression TAny decls expLength
+                , typedSizedExpression TBoolean decls expLength
+                ]
         s1 <- genSpaces1
         return $ ("if" ++ s1 ++ e, decls)
     genClauses :: Int -> Int -> Decls -> Gen (String, Decls)
-    genClauses clauseLength expLength = undefined {-do
-                                                  (c, _) <- oneof [genForClause genIfClause]
-                                                  cs <- genClauses (clauseLength - 1) expLength
-                                                  s1 <- genSpaces
-                                                  return $ c ++ ' ' : s1 ++ cs
-                                                  -}
+    genClauses 0 expLength decls = return ("", decls)
+    genClauses clauseLength expLength decls = do
+        (c, decls) <-
+            oneof [genForClause expLength decls, genIfClause expLength decls]
+        (cs, decls) <- genClauses (clauseLength - 1) expLength decls
+        s1 <- genSpaces1
+        return (c ++ s1 ++ cs, decls)
 
 -- TODO: notExp is only for boolean and number if inside parens and any type
-typedSizedExpression t decls n = oneof [binaryExp, notExp, parenExp, typedSizedExpression t decls 0]
+typedSizedExpression t decls n =
+    oneof
+        [ binaryExp
+        , notExp
+        , parenExp
+        , typedSizedExpression t decls 0
+        ]
   where
     binaryExp = do
         (o, tl, tr) <- genOperator t
@@ -223,7 +251,8 @@ genOperator TBoolean = do
         "==" -> return (o, TAny, TAny)
         "!=" -> return (o, TAny, TAny)
 genOperator TNumber = do
-    o <- oneof [return "+", return "-", return "*", return "//", return "%"]
+    o <-
+        oneof [return "+", return "-", return "*", return "//", return "%"]
     t1 <- frequency [(1, return TBoolean), (2, return TNumber)]
     t2 <- frequency [(5, return TNumber), (1, return TBoolean)]
     return (o, t1, t2)
@@ -250,7 +279,8 @@ genOperator TList = do
                     return (o, TList, r)
                 _ -> return (o, l, TList)
 genOperator TAny = do
-    t <- oneof [return TBoolean, return TNumber, return TText, return TList]
+    t <-
+        oneof [return TBoolean, return TNumber, return TText, return TList]
     genOperator t
 
 eqOperator :: Gen String
@@ -263,10 +293,19 @@ inOperator :: Gen String
 inOperator = oneof [return "in", return "not in"]
 
 typeGen :: Gen BoaType
-typeGen = oneof [return TNone, return TBoolean, return TNumber, return TText, return TList]
+typeGen =
+    oneof
+        [ return TNone
+        , return TBoolean
+        , return TNumber
+        , return TText
+        , return TList
+        ]
 
 exprLiteral :: Decls -> Gen (String, BoaType)
-exprLiteral decls = oneof [numConst, stringConst, none, true, false, ident]
+exprLiteral decls
+    | Map.null decls = oneof [numConst, stringConst, none, true, false]
+    | True = oneof [numConst, stringConst, none, true, false, ident]
   where
     numConst = do
         n <- show <$> arbitrarySizedNatural
@@ -287,8 +326,23 @@ sizedStringConst size = do
             <$> vectorOf
                 n
                 ( frequency
-                    [ (9, elements $ map charToString $ filter (`notElem` ['\'', '\\']) $ map chr [32 .. 126]) -- printables except ' and \
-                    , (1, oneof [return "\\'", return "\\\\", return "\\n", return "\\\n", return "\\\r\n"])
+                    [
+                        ( 9
+                        , elements $
+                            map charToString $
+                                filter (`notElem` ['\'', '\\']) $
+                                    map chr [32 .. 126] -- printables except ' and \
+                        )
+                    ,
+                        ( 1
+                        , oneof
+                            [ return "\\'"
+                            , return "\\\\"
+                            , return "\\n"
+                            , return "\\\n"
+                            , return "\\\r\n"
+                            ]
+                        )
                     ]
                 )
     return $ '\'' : body ++ "'"
@@ -304,7 +358,7 @@ genSpace :: Gen String
 genSpace =
     frequency
         [ (1, genEndOfline)
-        , (3, return " ")
+        , (5, return " ")
         ]
 
 genSpaces :: Gen String

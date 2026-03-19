@@ -36,7 +36,7 @@ executable boa
 test-suite boa-test
     import:           dependencies
     import:           testing-tools
-    build-depends:    containers ^>=0.8, boa
+    build-depends:    containers ^>=0.8, boa, QuickCheck ^>=2.18.0.0
     default-language: Haskell2010
     type:             exitcode-stdio-1.0
     hs-source-dirs:   tests
