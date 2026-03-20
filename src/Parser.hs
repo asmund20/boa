@@ -87,9 +87,7 @@ expr = consumeSpaces (notExpr <|> binExpr)
             Just o -> binExprRightPart (Just o) e
 
 notExpr :: Parser Expression
-notExpr = do
-    _ <- try $ string "not "
-    Not <$> expr
+notExpr = try (string "not" >> space) >> Not <$> expr
 
 -- |  RelPart       ::= Term [ AddOper Expr ]
 relPart :: Parser Expression
@@ -185,13 +183,14 @@ relOper =
         char '>'
             >> ((char '=' >> return (Concrete GreaterEq)) <|> return (Abstract Greater))
     inOper :: Parser ConcreteOperationSymbol
-    inOper = try (string " in") >> return (Abstract In)
+    inOper = try (string "in") >> return (Abstract In)
     notInOper :: Parser ConcreteOperationSymbol
     notInOper = string "not" >> spaces >> string "in" >> return (Concrete NotIn)
 
 -- | ListBody      ::= Expr ListBodyEnd
 listBody :: Parser Expression
 listBody = do
+    _ <- spaces
     m <- optionMaybe expr
     case m of
         Nothing -> return $ ListExpression []
