@@ -80,8 +80,6 @@ boolToInt False = 0
 boolToInt True = 1
 
 operate :: OperationSymbol -> Value -> Value -> Either ErrorMessage Value
-operate op None _ = Left $ "Operator " ++ show op ++ " with None in left argument."
-operate op _ None = Left $ "Operator " ++ show op ++ " with None in right argument."
 operate Plus (Number l) (Number r) = Right $ Number $ l + r
 operate Plus (Boolean l) (Boolean r) = Right $ Number $ boolToInt l + boolToInt r
 operate Plus (Boolean l) (Number r) = Right $ Number $ boolToInt l + r
@@ -126,6 +124,8 @@ operate Eq (Number l) (Boolean r) = Right $ Boolean $ l == boolToInt r
 operate Eq (Boolean l) (Boolean r) = Right $ Boolean $ l == r
 operate Eq (Text l) (Text r) = Right $ Boolean $ l == r
 operate Eq (List l) (List r) = Right $ Boolean $ l == r
+operate Eq None None = Right $ Boolean True
+operate Eq _ _ = Right $ Boolean False
 operate Less (Boolean l) (Boolean r) = Right $ Boolean $ l < r
 operate Less (Number l) (Number r) = Right $ Boolean $ l < r
 operate Less (Text l) (Text r) = Right $ Boolean $ l < r
@@ -138,7 +138,16 @@ operate In (List l) (List ((List r) : rs)) = Right $ Boolean $ elem (List l) (Li
 operate In (Number l) (List ((Number r) : rs)) = Right $ Boolean $ elem (Number l) (Number r : rs)
 operate In (Text l) (List ((Text r) : rs)) = Right $ Boolean $ elem (Text l) (Text r : rs)
 operate In (Boolean l) (List ((Boolean r) : rs)) = Right $ Boolean $ elem (Boolean l) (Boolean r : rs)
-operate op v1 v2 = Left $ "Operator " ++ show op ++ " with arguments " ++ show v1 ++ ", " ++ show v2 ++ "."
+operate In _ (List []) = Right $ Boolean False
+operate op v1 v2 =
+    Left $
+        "Operator "
+            ++ show op
+            ++ " with arguments "
+            ++ show v1
+            ++ ", "
+            ++ show v2
+            ++ "."
 
 prettyValue :: Value -> String
 prettyValue None = "None"
