@@ -1,4 +1,4 @@
-module Gen.BoaProgram (BoaProgram (..)) where
+module Gen.BoaProgram where
 
 import Data.Char (chr)
 import qualified Data.Map as Map
@@ -7,7 +7,14 @@ import Parser
 import Syntax
 import Test.Tasty.QuickCheck
 
-newtype BoaProgram = P String deriving (Show, Eq)
+{-
+ - TODO
+ - Python: 'not' after an operator must be parenthesized-}
+
+newtype BoaProgram = P String deriving (Eq)
+
+instance Show BoaProgram where
+    show (P p) = p
 
 data BoaType = TNone | TBoolean | TNumber | TText | TList | TAny
     deriving (Eq, Show)
@@ -25,7 +32,7 @@ emptyDecls :: Decls
 emptyDecls = Map.empty
 
 instance Arbitrary BoaProgram where
-    arbitrary = do
+    arbitrary = resize 15 $ do
         (s, _) <- sized $ sizedProgram emptyDecls
         return $ P s
 
@@ -58,7 +65,7 @@ sizedProgram decls n = do
     (s1, decls') <- sizedProgram decls 0
     (ss, _) <- sizedProgram decls' (n - 1)
     spaces1 <- genSpaces
-    spaces2 <- genSpaces
+    spaces2 <- genWhiteSpaces
     return (s1 ++ spaces1 ++ ';' : spaces2 ++ ss, emptyDecls)
 
 identGen :: Gen String
@@ -124,8 +131,8 @@ typedSizedExpression TNone decls n =
         let listLength = n - expLength
         (csv, _) <- genCsvExprs TAny listLength decls expLength
         s1 <- genSpaces
-        s2 <- genSpaces
-        s3 <- genSpaces
+        s2 <- genWhiteSpaces
+        s3 <- genWhiteSpaces
         return ("print" ++ s1 ++ "(" ++ s2 ++ csv ++ s3 ++ ")", TNone)
 typedSizedExpression TList decls n = oneof [listExp, listComprehension, rangeCall]
   where
@@ -134,8 +141,8 @@ typedSizedExpression TList decls n = oneof [listExp, listComprehension, rangeCal
         let expLength = n `div` partitioning
         let listLength = n - expLength
         (csv, t) <- genCsvExprs TAny listLength decls expLength
-        s1 <- genSpaces
-        s2 <- genSpaces
+        s1 <- genWhiteSpaces
+        s2 <- genWhiteSpaces
         return ('[' : s1 ++ csv ++ s2 ++ "]", t)
     listComprehension = do
         partitioning <- choose (1, 10)
@@ -144,25 +151,26 @@ typedSizedExpression TList decls n = oneof [listExp, listComprehension, rangeCal
         (c, decls'') <- genForClause expLength decls
         (cs, decls') <- genClauses clauseLength expLength decls''
         (e, t) <- typedSizedExpression TAny decls' expLength
-        s1 <- genSpaces
-        s2 <- genSpaces1
-        s3 <- genSpaces
-        return ('[' : s1 ++ e ++ s2 ++ cs ++ s3 ++ "]", t)
+        s1 <- genWhiteSpaces
+        s2 <- genWhiteSpaces1
+        s3 <- genWhiteSpaces
+        s4 <- genWhiteSpaces
+        return ('[' : s1 ++ e ++ s2 ++ c ++ s3 ++ cs ++ s4 ++ "]", t)
     rangeCall = do
         params <- choose (1, 3)
         (csv, _) <- genCsvExprs TNumber params decls (n `div` params)
         s1 <- genSpaces
-        s2 <- genSpaces
-        s3 <- genSpaces
+        s2 <- genWhiteSpaces
+        s3 <- genWhiteSpaces
         return ("range" ++ s1 ++ '(' : s2 ++ csv ++ s3 ++ ")", TNumber)
     genForClause :: Int -> Decls -> Gen (String, Decls)
     genForClause expLength d = do
         i <- identGen
         (l, t) <- typedSizedExpression TList d expLength
-        s1 <- genSpaces1
-        s2 <- genSpaces1
-        s3 <- genSpaces1
-        return ("for" ++ s1 ++ i ++ s2 ++ "in" ++ s3 ++ l, Map.insert i t d)
+        s1 <- genWhiteSpaces
+        s2 <- genWhiteSpaces
+        s3 <- genWhiteSpaces
+        return ("for " ++ s1 ++ i ++ s2 ++ "in " ++ s3 ++ l, Map.insert i t d)
     genIfClause :: Int -> Decls -> Gen (String, Decls)
     genIfClause expLength decls = do
         (e, _) <-
@@ -170,7 +178,7 @@ typedSizedExpression TList decls n = oneof [listExp, listComprehension, rangeCal
                 [ typedSizedExpression TAny decls expLength
                 , typedSizedExpression TBoolean decls expLength
                 ]
-        s1 <- genSpaces1
+        s1 <- genWhiteSpaces1
         return $ ("if" ++ s1 ++ e, decls)
     genClauses :: Int -> Int -> Decls -> Gen (String, Decls)
     genClauses 0 expLength decls = return ("", decls)
@@ -178,45 +186,52 @@ typedSizedExpression TList decls n = oneof [listExp, listComprehension, rangeCal
         (c, decls) <-
             oneof [genForClause expLength decls, genIfClause expLength decls]
         (cs, decls) <- genClauses (clauseLength - 1) expLength decls
-        s1 <- genSpaces1
+        s1 <- genWhiteSpaces1
         return (c ++ s1 ++ cs, decls)
-
--- TODO: notExp is only for boolean and number if inside parens and any type
+typedSizedExpression TNumber decls n =
+    oneof
+        [ binaryExp TNumber decls n
+        , parenExp TNumber decls n
+        , typedSizedExpression TNumber decls 0
+        ]
 typedSizedExpression t decls n =
     oneof
-        [ binaryExp
-        , notExp
-        , parenExp
+        [ binaryExp t decls n
+        , notExp t decls n
+        , parenExp t decls n
         , typedSizedExpression t decls 0
         ]
-  where
-    binaryExp = do
-        (o, tl, tr) <- genOperator t
-        (el, _) <- typedSizedExpression tl decls (n `div` 2)
-        (er, _) <- typedSizedExpression tr decls (n `div` 2)
-        s1 <- genSpaces
-        s2 <- genSpaces
-        return (el ++ s1 ++ o ++ s2 ++ er, t)
-    notExp = do
-        (e, _) <- typedSizedExpression t decls (n - 1)
-        s <- genSpaces1
-        return ("not" ++ s ++ e, TBoolean)
-    parenExp = do
-        (e, _) <- typedSizedExpression t decls (n - 1)
-        s1 <- genSpaces
-        s2 <- genSpaces
-        return ('(' : s1 ++ e ++ s2 ++ ")", t)
+binaryExp :: BoaType -> Decls -> Int -> Gen (String, BoaType)
+binaryExp t decls n = do
+    (o, tl, tr) <- genOperator t
+    (el, _) <- typedSizedExpression tl decls (n `div` 2)
+    (er, _) <- typedSizedExpression tr decls (n `div` 2)
+    s1 <- genSpaces
+    s2 <- genSpaces
+    return (el ++ s1 ++ o ++ s2 ++ er, t)
+notExp :: BoaType -> Decls -> Int -> Gen (String, BoaType)
+notExp t decls n = do
+    (e, _) <- typedSizedExpression t decls (n - 1)
+    s <- genSpaces1
+    return ("not" ++ s ++ e, TBoolean)
+parenExp :: BoaType -> Decls -> Int -> Gen (String, BoaType)
+parenExp t decls n = do
+    (e, _) <- typedSizedExpression t decls (n - 1)
+    s1 <- genWhiteSpaces
+    s2 <- genWhiteSpaces
+    return ('(' : s1 ++ e ++ s2 ++ ")", t)
 
 genCsvExprs :: BoaType -> Int -> Decls -> Int -> Gen (String, BoaType)
-genCsvExprs t 0 decls exprSize = typedSizedExpression t decls exprSize
+genCsvExprs t 0 decls exprSize = return ("", TAny)
+genCsvExprs t 1 decls exprSize = typedSizedExpression t decls exprSize
 genCsvExprs TAny n decls exprSize = do
     t <- genType
     genCsvExprs t n decls exprSize
 genCsvExprs t n decls exprSize = do
     (e, _) <- typedSizedExpression t decls exprSize
     (es, _) <- genCsvExprs t (n - 1) decls exprSize
-    s1 <- genSpaces
-    s2 <- genSpaces
+    s1 <- genWhiteSpaces
+    s2 <- genWhiteSpaces
     return (e ++ s1 ++ ',' : s2 ++ es, t)
 
 -- | genOperator:  ResultType -> Gen (String, LeftArgtype, RightArgType)
@@ -354,17 +369,37 @@ genEndOfline =
     oneof
         [return "\r\n", return "\n"]
 
-genSpace :: Gen String
-genSpace =
+genWhiteSpace :: Gen String
+genWhiteSpace =
     frequency
         [ (1, genEndOfline)
         , (5, return " ")
         ]
 
+genWhiteSpaces :: Gen String
+genWhiteSpaces = do
+    n <- choose (0, 6)
+    genTheSpace n
+  where
+    genTheSpace :: Int -> Gen String
+    genTheSpace 0 = return ""
+    genTheSpace n = do
+        s <- genWhiteSpace
+        case s of
+            " " -> do
+                rest <- genTheSpace $ n - 1
+                return $ concat [s, rest]
+            _ -> return s
+
+genWhiteSpaces1 :: Gen String
+genWhiteSpaces1 = do
+    s <- genWhiteSpaces
+    return $ s ++ " "
+
 genSpaces :: Gen String
 genSpaces = do
     n <- choose (0, 6)
-    s <- vectorOf n genSpace
+    s <- vectorOf n (return " ")
     return $ concat s
 
 genSpaces1 :: Gen String
