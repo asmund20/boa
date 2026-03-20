@@ -8,7 +8,9 @@ import Text.Parsec.Char (endOfLine)
 import Text.ParserCombinators.Parsec
 
 data NonAbstractOperationSymbol = NotEq | LessEq | GreaterEq | NotIn
-data ConcreteOperationSymbol = Abstract OperationSymbol | Concrete NonAbstractOperationSymbol
+data ConcreteOperationSymbol
+    = Abstract OperationSymbol
+    | Concrete NonAbstractOperationSymbol
 
 -- |  Program       ::= Statements
 program :: Parser Program
@@ -23,7 +25,9 @@ comment = void (char '#' >> manyTill anyChar newline)
 
 -- |  Statement     ::= ident '=' Expr | Expr
 statement :: Parser Statement
-statement = skipMany (skipMany1 space <|> comment) >> ((Execute <$> notExpr) <|> binExprOrAssign)
+statement =
+    skipMany (skipMany1 space <|> comment)
+        >> ((Execute <$> notExpr) <|> binExprOrAssign)
   where
     binExprOrAssign :: Parser Statement
     binExprOrAssign = do
@@ -44,7 +48,8 @@ statement = skipMany (skipMany1 space <|> comment) >> ((Execute <$> notExpr) <|>
                     Nothing -> Define i <$> expr
                     Just _ -> Execute <$> binExprRightPart (Just $ Abstract Eq) (Variable i)
 
-binExprRightPart :: Maybe ConcreteOperationSymbol -> Expression -> Parser Expression
+binExprRightPart ::
+    Maybe ConcreteOperationSymbol -> Expression -> Parser Expression
 binExprRightPart om e1 = case om of
     Nothing -> do
         m <- optionMaybe relOper
@@ -103,7 +108,18 @@ ExprLiteral   ::= numConst
                 | '[' [Expr ListBodyEnd] ']'
 -}
 exprLiteral :: Parser Expression
-exprLiteral = consumeSpaces (notExpr <|> numConst <|> stringConst <|> none <|> true <|> false <|> ident <|> parenExpr <|> list)
+exprLiteral =
+    consumeSpaces
+        ( notExpr
+            <|> numConst
+            <|> stringConst
+            <|> none
+            <|> true
+            <|> false
+            <|> ident
+            <|> parenExpr
+            <|> list
+        )
   where
     none :: Parser Expression
     none = string "None" >> return (Constant None)
@@ -119,7 +135,11 @@ exprLiteral = consumeSpaces (notExpr <|> numConst <|> stringConst <|> none <|> t
             Nothing -> return $ Variable s
             Just ps -> return $ Call s ps
     params :: Parser [Expression]
-    params = between (char '(') (char ')') (sepBy expr (char ','))
+    params =
+        between
+            (consumeSpaces $ char '(')
+            (consumeSpaces $ char ')')
+            (sepBy expr (char ','))
     parenExpr :: Parser Expression
     parenExpr = between (char '(') (char ')') expr
     list :: Parser Expression
@@ -150,16 +170,20 @@ addOper = consumeSpaces (plus <|> minus)
 
 -- |  RelOper       ::= '==' | '!=' | '<' [ '=' ] | '>' [ '=' ] | 'in' | 'not' 'in'
 relOper :: Parser ConcreteOperationSymbol
-relOper = consumeSpaces (eq <|> notEq <|> lessEq <|> greaterEq <|> inOper <|> notInOper)
+relOper =
+    consumeSpaces (eq <|> notEq <|> lessEq <|> greaterEq <|> inOper <|> notInOper)
   where
     eq :: Parser ConcreteOperationSymbol
     eq = string "==" >> return (Abstract Eq)
     notEq :: Parser ConcreteOperationSymbol
     notEq = string "!=" >> return (Concrete NotEq)
     lessEq :: Parser ConcreteOperationSymbol
-    lessEq = char '<' >> ((char '=' >> return (Concrete LessEq)) <|> return (Abstract Less))
+    lessEq =
+        char '<' >> ((char '=' >> return (Concrete LessEq)) <|> return (Abstract Less))
     greaterEq :: Parser ConcreteOperationSymbol
-    greaterEq = char '>' >> ((char '=' >> return (Concrete GreaterEq)) <|> return (Abstract Greater))
+    greaterEq =
+        char '>'
+            >> ((char '=' >> return (Concrete GreaterEq)) <|> return (Abstract Greater))
     inOper :: Parser ConcreteOperationSymbol
     inOper = try (string " in") >> return (Abstract In)
     notInOper :: Parser ConcreteOperationSymbol
