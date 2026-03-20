@@ -94,6 +94,18 @@ operate Times (Number l) (Number r) = Right $ Number $ l * r
 operate Times (Boolean l) (Boolean r) = Right $ Number $ boolToInt l * boolToInt r
 operate Times (Boolean l) (Number r) = Right $ Number $ boolToInt l * r
 operate Times (Number l) (Boolean r) = Right $ Number $ l * boolToInt r
+operate Times (Number l) (Text r) = Right $ Text $ take (fromIntegral l * length r) (concat $ repeat r)
+operate Times (Text l) (Number r) = Right $ Text $ take (fromIntegral r * length l) (concat $ repeat l)
+operate Times (Boolean l) (Text r) =
+    Right $ Text $ take (fromIntegral (boolToInt l) * length r) (concat $ repeat r)
+operate Times (Text l) (Boolean r) =
+    Right $ Text $ take (fromIntegral (boolToInt r) * length l) (concat $ repeat l)
+operate Times (Number l) (List r) = Right $ List $ take (fromIntegral l * length r) (concat $ repeat r)
+operate Times (List l) (Number r) = Right $ List $ take (fromIntegral r * length l) (concat $ repeat l)
+operate Times (Boolean l) (List r) =
+    Right $ List $ take (fromIntegral (boolToInt l) * length r) (concat $ repeat r)
+operate Times (List l) (Boolean r) =
+    Right $ List $ take (fromIntegral (boolToInt r) * length l) (concat $ repeat l)
 operate Div (Number l) (Number r) = case r of
     0 -> Left "Division by zero"
     _ -> Right $ Number $ l `div` r
