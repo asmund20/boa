@@ -120,11 +120,11 @@ exprLiteral =
         )
   where
     none :: Parser Expression
-    none = string "None" >> return (Constant None)
+    none = try (string "None") >> return (Constant None)
     true :: Parser Expression
-    true = string "True" >> return (Constant $ Boolean True)
+    true = try (string "True") >> return (Constant $ Boolean True)
     false :: Parser Expression
-    false = string "False" >> return (Constant $ Boolean False)
+    false = try (string "False") >> return (Constant $ Boolean False)
     ident :: Parser Expression
     ident = do
         s <- identifier
@@ -137,7 +137,7 @@ exprLiteral =
         between
             (consumeSpaces $ char '(')
             (consumeSpaces $ char ')')
-            (sepBy expr (char ','))
+            (sepBy expr (consumeSpaces $ char ','))
     parenExpr :: Parser Expression
     parenExpr = between (char '(') (char ')') expr
     list :: Parser Expression
@@ -183,9 +183,9 @@ relOper =
         char '>'
             >> ((char '=' >> return (Concrete GreaterEq)) <|> return (Abstract Greater))
     inOper :: Parser ConcreteOperationSymbol
-    inOper = try (string "in") >> return (Abstract In)
+    inOper = try (string "in ") >> return (Abstract In)
     notInOper :: Parser ConcreteOperationSymbol
-    notInOper = string "not" >> spaces >> string "in" >> return (Concrete NotIn)
+    notInOper = string "not" >> spaces >> string "in " >> return (Concrete NotIn)
 
 -- | ListBody      ::= Expr ListBodyEnd
 listBody :: Parser Expression
@@ -245,7 +245,7 @@ numConst = Constant . Number <$> wholeNumber
             n <- naturalNumber
             return $ -n
     naturalNumber :: Parser Integer
-    naturalNumber = read <$> many1 digit
+    naturalNumber = (char '0' >> notFollowedBy digit >> return 0) <|> read <$> many1 digit
 
 stringConst :: Parser Expression
 stringConst = Constant . Text <$> between (char '\'') (char '\'') body
