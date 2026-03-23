@@ -1,7 +1,7 @@
 module Interpreter where
 
 import Control.Monad
-import Data.List (find, intercalate, unwords)
+import Data.List (find, intercalate, isInfixOf, unwords)
 import Data.Maybe (catMaybes)
 import Syntax
 
@@ -13,6 +13,13 @@ data RuntimeError
     | BadFunction FunctionName
     | BadArgument ErrorMessage
     deriving (Eq, Show)
+
+data Range = OneArgR Int | TwoArgR Int Int | ThreeArgR Int Int Int deriving (Eq)
+
+instance Show Range where
+    show (OneArgR i) = "range(0, " ++ show i ++ ")"
+    show (TwoArgR i1 i2) = "range(" ++ show i1 ++ ", " ++ show i2 ++ ")"
+    show (ThreeArgR i1 i2 i3) = "range(" ++ show i1 ++ ", " ++ show i2 ++ ", " ++ show i3 ++ ")"
 
 type Environment = [(VariableName, Value)]
 type Runtime a = Environment -> (Either RuntimeError a, Output)
@@ -141,16 +148,11 @@ operate Eq _ _ = Right $ Boolean False
 operate Less (Boolean l) (Boolean r) = Right $ Boolean $ l < r
 operate Less (Number l) (Number r) = Right $ Boolean $ l < r
 operate Less (Text l) (Text r) = Right $ Boolean $ l < r
-operate Less (List l) (List r) = Right $ Boolean $ length l < length r
 operate Greater (Boolean l) (Boolean r) = Right $ Boolean $ l > r
 operate Greater (Number l) (Number r) = Right $ Boolean $ l > r
 operate Greater (Text l) (Text r) = Right $ Boolean $ l > r
-operate Greater (List l) (List r) = Right $ Boolean $ length l > length r
-operate In (List l) (List ((List r) : rs)) = Right $ Boolean $ elem (List l) (List r : rs)
-operate In (Number l) (List ((Number r) : rs)) = Right $ Boolean $ elem (Number l) (Number r : rs)
-operate In (Text l) (List ((Text r) : rs)) = Right $ Boolean $ elem (Text l) (Text r : rs)
-operate In (Boolean l) (List ((Boolean r) : rs)) = Right $ Boolean $ elem (Boolean l) (Boolean r : rs)
-operate In _ (List []) = Right $ Boolean False
+operate In l (List r) = Right $ Boolean $ l `elem` r
+operate In (Text l) (Text r) = Right $ Boolean $ l `isInfixOf` r
 operate op v1 v2 =
     Left $
         "Operator "
@@ -162,23 +164,63 @@ operate op v1 v2 =
             ++ "."
 
 prettyValue :: Value -> String
-prettyValue None = "None"
-prettyValue (Boolean True) = "True"
-prettyValue (Boolean False) = "False"
-prettyValue (Number n) = show n
-prettyValue (Text s) = s
-prettyValue (List vs) =
-    "[" ++ intercalate ", " (map prettyValue vs) ++ "]"
+prettyValue = prettyValue' False
+  where
+    prettyValue' _ None = "None"
+    prettyValue' _ (Boolean True) = "True"
+    prettyValue' _ (Boolean False) = "False"
+    prettyValue' _ (Number n) = show n
+    prettyValue' False (Text s) = s
+    prettyValue' True (Text s)
+        | '"' `elem` s = '\'' : concat (map singles s) ++ "'"
+        | '\'' `elem` s = '"' : concat (map doubles s) ++ "\""
+        | otherwise = '\'' : concat (map singles s) ++ "'"
+      where
+        doubles c = case c of
+            '\\' -> "\\\\"
+            '"' -> "\\\""
+            '\n' -> "\\n"
+            c -> c : []
+        singles c = case c of
+            '\\' -> "\\\\"
+            '\'' -> "\\'"
+            '\n' -> "\\n"
+            c -> c : []
+    prettyValue' _ (List vs) =
+        "[" ++ intercalate ", " (map (prettyValue' True) vs) ++ "]"
+
+-- apply :: FunctionName -> FunctionArguments -> Boa Value
+-- apply name arguments = case name of
+--     "range" -> case arguments of
+--         [Number x] -> return $ List [Number a | a <- [0 .. x - 1]]
+--         [Number x, Number y] -> return $ List [Number a | a <- [x .. y - 1]]
+--         [Number x, Number y, Number 0] -> abort $ BadArgument "Third argument to range must be nonzero"
+--         [Number x, Number y, Number z] -> return $ List [Number a | a <- [x, x + z .. y - 1]]
+--         _ -> abort $ BadArgument $ unwords $ map show arguments
+--     "print" -> output (unwords $ map prettyValue arguments) >> return None
+--     _ -> abort $ BadFunction name
+--   where
+--     range start end step = undefined
 
 apply :: FunctionName -> FunctionArguments -> Boa Value
 apply name arguments = case name of
     "range" -> case arguments of
-        [Number x] -> return $ List [Number a | a <- [0 .. x - 1]]
-        [Number x, Number y] -> return $ List [Number a | a <- [x .. y - 1]]
-        [Number x, Number y, Number z] -> return $ List [Number a | a <- [x, x + z .. y - 1]]
+        [Number stop] -> return $ List $ range 0 stop 1
+        [Number start, Number stop] -> return $ List $ range start stop 1
+        [_, _, Number 0] -> abort $ BadArgument "Third argument to range must be nonzero"
+        [Number start, Number stop, Number step] -> return $ List $ range start stop step
         _ -> abort $ BadArgument $ unwords $ map show arguments
     "print" -> output (unwords $ map prettyValue arguments) >> return None
     _ -> abort $ BadFunction name
+  where
+    range :: Integer -> Integer -> Integer -> [Value]
+    range start stop step =
+        takeWhile
+            (\(Number v) -> (step > 0 && v < stop) || (step < 0 && v > stop))
+            ( map
+                (\i -> Number (start + step * i))
+                [0 ..]
+            )
 
 -- Helper function for managing environments in list comprehensions
 evalUnderContext :: [(VariableName, Value)] -> Expression -> Boa Value
