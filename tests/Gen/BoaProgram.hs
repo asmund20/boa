@@ -36,6 +36,9 @@ instance Arbitrary BoaProgram where
         (s, _) <- sized $ sizedProgram emptyDecls
         return $ P s
 
+genOrdType :: Gen BoaType
+genOrdType = oneof [return TBoolean, return TNumber, return TText]
+
 genType :: Gen BoaType
 genType =
     oneof
@@ -72,7 +75,45 @@ identGen :: Gen String
 identGen = do
     c <- identStartGen
     cs <- listOf identBodypartGen
-    return (c : cs)
+    let ident = c : cs
+    if ident
+        `elem` [ "False"
+               , "def"
+               , "if"
+               , "raise"
+               , "None"
+               , "del"
+               , "import"
+               , "return"
+               , "True"
+               , "elif"
+               , "in"
+               , "try"
+               , "and"
+               , "else"
+               , "is"
+               , "while"
+               , "as"
+               , "except"
+               , "lambda"
+               , "with"
+               , "assert"
+               , "finally"
+               , "nonlocal"
+               , "yield"
+               , "break"
+               , "for"
+               , "not"
+               , "class"
+               , "form"
+               , "or"
+               , "continue"
+               , "global"
+               , "pass"
+               ]
+        then
+            identGen
+        else return ident
   where
     letterGen :: Gen Char
     letterGen = elements $ ['a' .. 'z'] ++ ['A' .. 'Z']
@@ -109,7 +150,7 @@ typedSizedExpression TBoolean _ 0 =
         , return ("False", TBoolean)
         ]
 typedSizedExpression TNumber _ 0 = do
-    n <- show <$> arbitrarySizedNatural
+    n <- show <$> arbitrarySizedIntegral
     return $ (n, TNumber)
 typedSizedExpression TText _ 0 = do
     s <- sized sizedStringConst
@@ -170,7 +211,7 @@ typedSizedExpression TList decls n = oneof [listExp, listComprehension, rangeCal
         s1 <- genWhiteSpaces
         s2 <- genWhiteSpaces
         s3 <- genWhiteSpaces
-        return ("for " ++ s1 ++ i ++ s2 ++ "in " ++ s3 ++ l, Map.insert i t d)
+        return ("for " ++ s1 ++ i ++ s2 ++ " in " ++ s3 ++ l, Map.insert i t d)
     genIfClause :: Int -> Decls -> Gen (String, Decls)
     genIfClause expLength decls = do
         (e, _) <-
@@ -197,10 +238,10 @@ typedSizedExpression TNumber decls n =
 typedSizedExpression t decls n =
     oneof
         [ binaryExp t decls n
-        , notExp t decls n
         , parenExp t decls n
         , typedSizedExpression t decls 0
         ]
+
 binaryExp :: BoaType -> Decls -> Int -> Gen (String, BoaType)
 binaryExp t decls n = do
     (o, tl, tr) <- genOperator t
@@ -208,7 +249,7 @@ binaryExp t decls n = do
     (er, _) <- typedSizedExpression tr decls (n `div` 2)
     s1 <- genSpaces
     s2 <- genSpaces
-    return (el ++ s1 ++ o ++ s2 ++ er, t)
+    return ('(' : el ++ s1 ++ o ++ s2 ++ er ++ ")", t)
 notExp :: BoaType -> Decls -> Int -> Gen (String, BoaType)
 notExp t decls n = do
     (e, _) <- typedSizedExpression t decls (n - 1)
@@ -245,23 +286,23 @@ genOperator TBoolean = do
             , return "<="
             , return ">"
             , return ">="
-            , return "in"
-            , return "not in"
+            , return " in "
+            , return " not in "
             ]
     case o of
-        "in" -> oneof [return (o, TAny, TList), return (o, TText, TText)]
-        "not in" -> oneof [return (o, TAny, TList), return (o, TText, TText)]
+        " in " -> oneof [return (o, TAny, TList), return (o, TText, TText)]
+        " not in " -> oneof [return (o, TAny, TList), return (o, TText, TText)]
         "<" -> do
-            t <- genType
+            t <- genOrdType
             return (o, t, t)
         "<=" -> do
-            t <- genType
+            t <- genOrdType
             return (o, t, t)
         ">" -> do
-            t <- genType
+            t <- genOrdType
             return (o, t, t)
         ">=" -> do
-            t <- genType
+            t <- genOrdType
             return (o, t, t)
         "==" -> return (o, TAny, TAny)
         "!=" -> return (o, TAny, TAny)
@@ -305,7 +346,7 @@ relOperator :: Gen String
 relOperator = oneof [return "<", return "<=", return ">", return ">="]
 
 inOperator :: Gen String
-inOperator = oneof [return "in", return "not in"]
+inOperator = oneof [return " in ", return " not in "]
 
 typeGen :: Gen BoaType
 typeGen =
@@ -320,10 +361,10 @@ typeGen =
 exprLiteral :: Decls -> Gen (String, BoaType)
 exprLiteral decls
     | Map.null decls = oneof [numConst, stringConst, none, true, false]
-    | True = oneof [numConst, stringConst, none, true, false, ident]
+    | otherwise = oneof [numConst, stringConst, none, true, false, ident]
   where
     numConst = do
-        n <- show <$> arbitrarySizedNatural
+        n <- show <$> arbitrarySizedIntegral
         return (n, TNumber)
     stringConst = do
         s <- sized sizedStringConst
