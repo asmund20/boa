@@ -166,6 +166,8 @@ addOper = consumeSpaces (plus <|> minus)
     minus :: Parser (Expression -> Expression -> Expression)
     minus = char '-' >> return (Operation Minus)
 
+-- TODO: Stop doing ConcreteOperationSymbol, just use lambda function to create the correct structure
+
 -- |  RelOper       ::= '==' | '!=' | '<' [ '=' ] | '>' [ '=' ] | 'in' | 'not' 'in'
 relOper :: Parser ConcreteOperationSymbol
 relOper =
