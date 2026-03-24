@@ -7,9 +7,12 @@ import Parser
 import Syntax
 import Test.Tasty.QuickCheck
 
-{-
- - TODO
- - Python: 'not' after an operator must be parenthesized-}
+-- TODO
+-- Python: 'not' after an operator must be parenthesized
+-- Possibly add some not expressions somewhere (must be parenthesized, that can be handled outside)
+--
+-- TODO
+-- Decrease the clause size more than one for a for clause
 
 newtype BoaProgram = P String deriving (Eq)
 
@@ -32,7 +35,7 @@ emptyDecls :: Decls
 emptyDecls = Map.empty
 
 instance Arbitrary BoaProgram where
-    arbitrary = resize 15 $ do
+    arbitrary = resize 13 $ do
         (s, _) <- sized $ sizedProgram emptyDecls
         return $ P s
 
@@ -207,7 +210,9 @@ typedSizedExpression TList decls n = oneof [listExp, listComprehension, rangeCal
     genForClause :: Int -> Decls -> Gen (String, Decls)
     genForClause expLength d = do
         i <- identGen
-        (l, t) <- typedSizedExpression TList d expLength
+        (l, t) <-
+            oneof
+                [typedSizedExpression TList d expLength, typedSizedExpression TText d expLength]
         s1 <- genWhiteSpaces
         s2 <- genWhiteSpaces
         s3 <- genWhiteSpaces
@@ -225,7 +230,7 @@ typedSizedExpression TList decls n = oneof [listExp, listComprehension, rangeCal
     genClauses 0 expLength decls = return ("", decls)
     genClauses clauseLength expLength decls = do
         (c, decls) <-
-            oneof [genForClause expLength decls, genIfClause expLength decls]
+            frequency [(1, genForClause expLength decls), (2, genIfClause expLength decls)]
         (cs, decls) <- genClauses (clauseLength - 1) expLength decls
         s1 <- genWhiteSpaces1
         return (c ++ s1 ++ cs, decls)
@@ -265,9 +270,6 @@ parenExp t decls n = do
 genCsvExprs :: BoaType -> Int -> Decls -> Int -> Gen (String, BoaType)
 genCsvExprs t 0 decls exprSize = return ("", TAny)
 genCsvExprs t 1 decls exprSize = typedSizedExpression t decls exprSize
-genCsvExprs TAny n decls exprSize = do
-    t <- genType
-    genCsvExprs t n decls exprSize
 genCsvExprs t n decls exprSize = do
     (e, _) <- typedSizedExpression t decls exprSize
     (es, _) <- genCsvExprs t (n - 1) decls exprSize
