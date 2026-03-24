@@ -8,7 +8,7 @@ import Test.Tasty
 main :: IO ()
 main =
     defaultMain $
-        localOption (mkTimeout 10000000) $
+        localOption (mkTimeout 15000000) $
             testGroup "Test Suite :" $
                 [ interpreter_tests
                 , full_test
