@@ -106,11 +106,11 @@ test p = Monadic.monadicIO $ do
                     then
                         "\n\n\nFirst different character at "
                             ++ show diffIndex
-                            ++ "\nBoa output first char diff:\n"
-                            ++ take 20 boa_diff
-                            ++ " [...]"
                             ++ "\nPython output first char diff:\n"
                             ++ take 20 python_diff
+                            ++ " [...]"
+                            ++ "\nBoa output first char diff:\n"
+                            ++ take 20 boa_diff
                             ++ " [...]"
                     else ""
 
