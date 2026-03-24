@@ -68,7 +68,7 @@ look var =
 -- type Environment = [(VariableName, Value)]
 -- type Runtime a = Environment -> (Either RuntimeError a, Output)
 bind :: VariableName -> Value -> (Boa a -> Boa a)
-bind name value action = Boa (\env -> let env' = (name, value) : env in run action env')
+bind name value action = Boa (\env -> run action ((name, value) : env))
 
 output :: String -> Boa ()
 output s = Boa (const (Right mempty, [s]))
@@ -151,6 +151,7 @@ operate Less (Text l) (Text r) = Right $ Boolean $ l < r
 operate Greater (Boolean l) (Boolean r) = Right $ Boolean $ l > r
 operate Greater (Number l) (Number r) = Right $ Boolean $ l > r
 operate Greater (Text l) (Text r) = Right $ Boolean $ l > r
+operate In (Boolean l) (List r) = Right $ Boolean $ (Number $ boolToInt l) `elem` r || (Boolean l) `elem` r
 operate In l (List r) = Right $ Boolean $ l `elem` r
 operate In (Text l) (Text r) = Right $ Boolean $ l `isInfixOf` r
 operate op v1 v2 =
@@ -222,9 +223,10 @@ apply name arguments = case name of
                 [0 ..]
             )
 
--- Helper function for managing environments in list comprehensions
+-- Helper function for managing environments in list comprehensions. Takes an environment
+-- and an expression and makes a Boa Value monad from it
 evalUnderContext :: [(VariableName, Value)] -> Expression -> Boa Value
-evalUnderContext context expr = foldr (\(n, v) acc -> bind n v acc) (eval expr) context
+evalUnderContext context expr = foldl (\acc (n, v) -> bind n v acc) (eval expr) context
 
 -- Main functions of interpreter
 eval :: Expression -> Boa Value
@@ -251,39 +253,39 @@ eval (ListExpression (x : xs)) = do
     case xs of
         List xs -> return $ List (x : xs)
 eval (ListComprehension e cs) = do
-    let initialContexts = [[]]
-
-    let processClauses context [] = return context
-        processClauses contexts (cl : rest) = case cl of
-            If condExpr -> do
-                keptContexts <-
-                    catMaybes
-                        <$> mapM
-                            ( \ctx -> do
-                                val <- evalUnderContext ctx condExpr
-                                if truthy val
-                                    then return (Just ctx)
-                                    else return Nothing
-                            )
-                            contexts
-                processClauses keptContexts rest
-            For var iterableExpr -> do
-                expandedContextsList <-
-                    mapM
-                        ( \ctx -> do
-                            val <- evalUnderContext ctx iterableExpr
-                            case val of
-                                List elems -> return [(var, e) : ctx | e <- elems]
-                                other -> abort $ BadArgument $ "for needs a list, got " ++ show other
-                        )
-                        contexts
-                let newContexts = concat expandedContextsList
-                processClauses newContexts rest
-    finalContexts <- processClauses initialContexts cs
-
+    finalContexts <- processClauses [[]] cs
     results <- mapM (`evalUnderContext` e) finalContexts
-
     return $ List results
+  where
+    processClauses ::
+        [[(VariableName, Value)]] -> [Clause] -> Boa [[(VariableName, Value)]]
+    processClauses contexts [] = return contexts
+    processClauses contexts ((If condExpr) : rest) = do
+        keptContexts <-
+            catMaybes
+                <$> mapM
+                    ( \ctx -> do
+                        val <- evalUnderContext ctx condExpr
+                        if truthy val
+                            then return (Just ctx)
+                            else return Nothing
+                    )
+                    contexts
+        processClauses keptContexts rest
+    processClauses contexts ((For ident iterableExpr : cs)) =
+        concat
+            <$> mapM
+                ( \ctx -> do
+                    res <- evalUnderContext ctx iterableExpr
+                    case res of
+                        List l -> processClauses ([(ident, v) : ctx | v <- l]) cs
+                        Text t -> processClauses ([(ident, Text $ v : []) : ctx | v <- t]) cs
+                        _ ->
+                            abort $
+                                BadArgument
+                                    "For clause must have either a string or a list to the right of 'in'."
+                )
+                contexts
 
 exec :: Program -> Boa ()
 exec [] = return ()
