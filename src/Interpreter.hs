@@ -260,6 +260,10 @@ eval (ListComprehension e cs) = do
     processClauses ::
         [[(VariableName, Value)]] -> [Clause] -> Boa [[(VariableName, Value)]]
     processClauses contexts [] = return contexts
+    processClauses contexts ((If condExpr1) : (If condExpr2) : rest) =
+        processClauses
+            contexts
+            ((If $ Operation Times condExpr1 condExpr2) : rest)
     processClauses contexts ((If condExpr) : rest) = do
         keptContexts <-
             catMaybes
