@@ -89,10 +89,7 @@ exprLiteral =
     ident :: Parser Expression
     ident = do
         s <- identifier
-        m <- optionMaybe params
-        case m of
-            Nothing -> return $ Variable s
-            Just ps -> return $ Call s ps
+        (Call s) <$> params <|> return (Variable s)
     params :: Parser [Expression]
     params =
         between
@@ -187,13 +184,14 @@ listBodyEnd e = clauses <|> commaSepExprs
                     <*> many (consumeSpaces (forClause <|> ifClause))
                 )
     commaSepExprs :: Parser Expression
-    commaSepExprs = do
-        m <- optionMaybe $ char ',' *> spaces
-        case m of
-            Nothing -> return $ ListExpression [e]
-            Just _ -> do
-                es <- sepBy expr (consumeSpaces $ char ',')
-                return $ ListExpression (e : es)
+    commaSepExprs =
+        ListExpression
+            <$> ( ( char ','
+                        >> spaces
+                        >> pure (:) <*> pure e <*> sepBy1 expr (consumeSpaces $ char ',')
+                  )
+                    <|> return [e]
+                )
 
 -- | ForClause     ::= 'for' ident 'in' Expr
 forClause :: Parser Clause
@@ -233,17 +231,15 @@ stringConst = Constant . Text <$> between (char '\'') (char '\'') body
     allowedChar :: Parser (Maybe Char)
     allowedChar = Just <$> (noneOf "'\\\n\r'")
     backSlashOrSingleQuote :: Parser (Maybe Char)
-    backSlashOrSingleQuote = do
-        _ <- char '\\'
-        m <- optionMaybe endOfLine
-        case m of
-            Just _ -> return Nothing
-            Nothing -> do
-                n <- oneOf "'\\n"
-                case n of
-                    '\\' -> return $ Just '\\'
-                    '\'' -> return $ Just '\''
-                    'n' -> return $ Just '\n'
+    backSlashOrSingleQuote =
+        char '\\'
+            >> ( Just
+                    <$> char '\\'
+                        <|> Just
+                    <$> char '\''
+                        <|> (char 'n' >> return (Just '\n'))
+                        <|> (endOfLine >> return Nothing)
+               )
 
 parseString :: String -> Either ParseError Program
 parseString = parse (program <* eof) "input"
