@@ -7,11 +7,6 @@ import Syntax
 import Text.Parsec.Char (endOfLine)
 import Text.ParserCombinators.Parsec
 
-data NonAbstractOperationSymbol = NotEq | LessEq | GreaterEq | NotIn
-data ConcreteOperationSymbol
-    = Abstract OperationSymbol
-    | Concrete NonAbstractOperationSymbol
-
 -- |  Program       ::= Statements
 program :: Parser Program
 program = statements
@@ -26,76 +21,48 @@ comment = void (char '#' >> manyTill anyChar newline)
 -- |  Statement     ::= ident '=' Expr | Expr
 statement :: Parser Statement
 statement =
-    skipMany (skipMany1 space <|> comment)
-        >> ((Execute <$> notExpr) <|> binExprOrAssign)
+    between
+        (skipMany (skipMany1 space <|> comment))
+        (skipMany (skipMany1 space <|> comment))
+        ((Execute <$> notExpr) <|> binExprOrAssign)
   where
     binExprOrAssign :: Parser Statement
     binExprOrAssign = do
         e <- relPart
         case e of
             Variable i -> execOrAssign i
-            _ -> Execute <$> binExprRightPart Nothing e
-
+            _ -> Execute <$> ((rightPart e) <|> (return e))
+    rightPart :: Expression -> Parser Expression
+    rightPart e = relOper <*> return e <*> relPart
     -- \| Here, assign statement and equality-expressions are left-factorized by trying to parse "==" and '=' after an identifier
     execOrAssign :: VariableName -> Parser Statement
-    execOrAssign i = do
-        m <- optionMaybe $ char '='
-        case m of
-            Nothing -> Execute <$> binExprRightPart Nothing (Variable i)
-            Just _ -> do
-                m' <- optionMaybe $ char '='
-                case m' of
-                    Nothing -> Define i <$> expr
-                    Just _ -> Execute <$> binExprRightPart (Just $ Abstract Eq) (Variable i)
-
-binExprRightPart ::
-    Maybe ConcreteOperationSymbol -> Expression -> Parser Expression
-binExprRightPart om e1 = case om of
-    Nothing -> do
-        m <- optionMaybe relOper
-        case m of
-            Nothing -> return e1
-            Just o -> binExpSecondExp e1 o
-    Just o -> binExpSecondExp e1 o
-  where
-    binExpSecondExp :: Expression -> ConcreteOperationSymbol -> Parser Expression
-    binExpSecondExp e1 o = do
-        e2 <- relPart
-        case o of
-            -- The cases where there is no operator in the abstract syntax
-            -- that does the same as the concrete syntax operator
-            Concrete NotIn -> return $ Not $ Operation In e1 e2
-            Concrete GreaterEq -> return $ Not $ Operation Less e1 e2
-            Concrete LessEq -> return $ Not $ Operation Greater e1 e2
-            Concrete NotEq -> return $ Not $ Operation Eq e1 e2
-            -- The cases where there is an abstract operation symbol for the concrete ones
-            _ -> return $ Operation (concreteToAbstract o) e1 e2
-    -- \| Mapping from a concrete syntax operation symbol to the equivalent
-    concreteToAbstract :: ConcreteOperationSymbol -> OperationSymbol
-    concreteToAbstract (Abstract o) = o
+    execOrAssign i =
+        (char '=' >> spaces >> assign i) <|> Execute
+            <$> ((rightPart (Variable i)) <|> return (Variable i))
+    assign :: VariableName -> Parser Statement
+    assign i =
+        (char '=' >> spaces >> Execute <$> (Operation Eq (Variable i)) <$> relPart)
+            <|> (Define i <$> expr)
 
 -- |  Expr          ::= 'not' Expr | RelPart [ RelOper Expr ]
 expr :: Parser Expression
-expr = consumeSpaces (notExpr <|> binExpr)
+expr = notExpr <|> binExpr
   where
     binExpr :: Parser Expression
     binExpr = do
         e <- relPart
-        m <- optionMaybe relOper
-        case m of
-            Nothing -> return e
-            Just o -> binExprRightPart (Just o) e
+        (relOper <*> return e <*> relPart) <|> return e
 
 notExpr :: Parser Expression
-notExpr = try (string "not" >> space) >> Not <$> expr
+notExpr = (keyWord "not") >> Not <$> expr
 
 -- |  RelPart       ::= Term [ AddOper Expr ]
 relPart :: Parser Expression
-relPart = consumeSpaces (notExpr <|> chainl1 term addOper)
+relPart = notExpr <|> chainl1 term addOper
 
 -- | Term          ::= ExprLiteral [ MultOper Expr ]
 term :: Parser Expression
-term = consumeSpaces (notExpr <|> chainl1 exprLiteral multOper)
+term = notExpr <|> chainl1 exprLiteral multOper
 
 {- |
 ExprLiteral   ::= numConst
@@ -107,24 +74,18 @@ ExprLiteral   ::= numConst
 -}
 exprLiteral :: Parser Expression
 exprLiteral =
-    consumeSpaces
-        ( notExpr
-            <|> numConst
-            <|> stringConst
-            <|> none
-            <|> true
-            <|> false
-            <|> ident
-            <|> parenExpr
-            <|> list
-        )
+    ( notExpr
+        <|> numConst
+        <|> stringConst
+        <|> (keyWord "None" >> return (Constant None))
+        <|> (keyWord "True" >> return (Constant $ Boolean True))
+        <|> (keyWord "False" >> return (Constant $ Boolean False))
+        <|> ident
+        <|> parenExpr
+        <|> list
+    )
+        <* spaces
   where
-    none :: Parser Expression
-    none = try (string "None") >> return (Constant None)
-    true :: Parser Expression
-    true = try (string "True") >> return (Constant $ Boolean True)
-    false :: Parser Expression
-    false = try (string "False") >> return (Constant $ Boolean False)
     ident :: Parser Expression
     ident = do
         s <- identifier
@@ -135,16 +96,19 @@ exprLiteral =
     params :: Parser [Expression]
     params =
         between
-            (consumeSpaces $ char '(')
-            (consumeSpaces $ char ')')
+            (char '(' <* spaces)
+            (char ')' <* spaces)
             (sepBy expr (consumeSpaces $ char ','))
     parenExpr :: Parser Expression
-    parenExpr = between (char '(') (char ')') expr
+    parenExpr = between (char '(' <* spaces) (char ')' <* spaces) expr
     list :: Parser Expression
-    list = between (char '[') (char ']') listBody
+    list = between (char '[' <* spaces) (char ']' <* spaces) listBody
 
 consumeSpaces :: Parser a -> Parser a
 consumeSpaces p = between spaces spaces p
+
+keyWord :: String -> Parser ()
+keyWord s = try (string s >> notFollowedBy identifierBodyPart) *> spaces
 
 -- |  MultOper      ::= '*'  | '//' | '%  |
 multOper :: Parser (Expression -> Expression -> Expression)
@@ -166,33 +130,43 @@ addOper = consumeSpaces (plus <|> minus)
     minus :: Parser (Expression -> Expression -> Expression)
     minus = char '-' >> return (Operation Minus)
 
--- TODO: Stop doing ConcreteOperationSymbol, just use lambda function to create the correct structure
-
 -- |  RelOper       ::= '==' | '!=' | '<' [ '=' ] | '>' [ '=' ] | 'in' | 'not' 'in'
-relOper :: Parser ConcreteOperationSymbol
+relOper :: Parser (Expression -> Expression -> Expression)
 relOper =
     consumeSpaces (eq <|> notEq <|> lessEq <|> greaterEq <|> inOper <|> notInOper)
   where
-    eq :: Parser ConcreteOperationSymbol
-    eq = string "==" >> return (Abstract Eq)
-    notEq :: Parser ConcreteOperationSymbol
-    notEq = string "!=" >> return (Concrete NotEq)
-    lessEq :: Parser ConcreteOperationSymbol
+    eq :: Parser (Expression -> Expression -> Expression)
+    eq = string "==" >> return (Operation Eq)
+    notEq :: Parser (Expression -> Expression -> Expression)
+    notEq = string "!=" >> return (notOper Eq)
+    lessEq :: Parser (Expression -> Expression -> Expression)
     lessEq =
-        char '<' >> ((char '=' >> return (Concrete LessEq)) <|> return (Abstract Less))
-    greaterEq :: Parser ConcreteOperationSymbol
+        char '<'
+            >> ( (char '=' >> return (notOper Greater))
+                    <|> return
+                        (Operation Less)
+               )
+    greaterEq :: Parser (Expression -> Expression -> Expression)
     greaterEq =
         char '>'
-            >> ((char '=' >> return (Concrete GreaterEq)) <|> return (Abstract Greater))
-    inOper :: Parser ConcreteOperationSymbol
-    inOper = try (string "in ") >> return (Abstract In)
-    notInOper :: Parser ConcreteOperationSymbol
-    notInOper = string "not" >> spaces >> string "in " >> return (Concrete NotIn)
+            >> ( (char '=' >> return (notOper Less))
+                    <|> return
+                        (Operation Greater)
+               )
+    inOper :: Parser (Expression -> Expression -> Expression)
+    inOper = keyWord "in" >> return (Operation In)
+    notInOper :: Parser (Expression -> Expression -> Expression)
+    notInOper =
+        keyWord "not"
+            >> spaces
+            >> string "in"
+            >> return (notOper In)
+    notOper :: OperationSymbol -> (Expression -> Expression -> Expression)
+    notOper o = (\l r -> Not (Operation o l r))
 
 -- | ListBody      ::= Expr ListBodyEnd
 listBody :: Parser Expression
 listBody = do
-    _ <- spaces
     m <- optionMaybe expr
     case m of
         Nothing -> return $ ListExpression []
@@ -206,17 +180,19 @@ listBodyEnd :: Expression -> Parser Expression
 listBodyEnd e = clauses <|> commaSepExprs
   where
     clauses :: Parser Expression
-    clauses = do
-        c <- consumeSpaces forClause
-        cs <- many $ consumeSpaces (forClause <|> ifClause)
-        return $ ListComprehension e (c : cs)
+    clauses =
+        (ListComprehension e)
+            <$> ( pure (:)
+                    <*> (consumeSpaces forClause)
+                    <*> many (consumeSpaces (forClause <|> ifClause))
+                )
     commaSepExprs :: Parser Expression
     commaSepExprs = do
-        m <- optionMaybe $ char ','
+        m <- optionMaybe $ char ',' *> spaces
         case m of
             Nothing -> return $ ListExpression [e]
             Just _ -> do
-                es <- sepBy expr (char ',')
+                es <- sepBy expr (consumeSpaces $ char ',')
                 return $ ListExpression (e : es)
 
 -- | ForClause     ::= 'for' ident 'in' Expr
@@ -224,18 +200,18 @@ forClause :: Parser Clause
 forClause = do
     _ <- consumeSpaces $ string "for"
     ident <- identifier
-    _ <- string "in"
+    _ <- string "in" <* spaces
     For ident <$> expr
 
 -- | IfClause      ::= 'if' Expr
 ifClause :: Parser Clause
-ifClause = string "if" >> If <$> expr
+ifClause = string "if" >> spaces >> If <$> expr
 
 identifier :: Parser String
-identifier = consumeSpaces $ do
-    x <- letter <|> char '_'
-    xs <- many $ letter <|> digit <|> char '_'
-    return (x : xs)
+identifier = pure (:) <*> (letter <|> char '_') <*> many identifierBodyPart <* spaces
+
+identifierBodyPart :: Parser Char
+identifierBodyPart = letter <|> digit <|> char '_'
 
 numConst :: Parser Expression
 numConst = Constant . Number <$> wholeNumber
