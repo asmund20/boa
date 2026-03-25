@@ -1,8 +1,8 @@
 #set document(title: "Report on the Boa interpreter implementation")
 #set heading(numbering: "1.1")
 #set par(justify: true)
+#set page(numbering: "1")
 #show "Boa": raw("Boa", lang: none)
-#set raw(lang: "haskell")
 
 #align(center)[
   #title()
@@ -24,3 +24,31 @@ The space complexity is also linear with respect to the space used by the progra
 
 = Maintainability
 The `operate` function matches against approximately 44 patterns, so some extra care might be necessary if updates or fixes are to be made there. The case for `eval ListComprehension` defines some nontrivial functions in `let` statements, that have implicit types. The types should probably be defined explicitly for increased readability.
+
+= Known limitations/errors
+
+The following program does not give the same output in my Boa implementation as python:
+```py
+[None
+    for z_ in range(2)
+    if (print(1) not in range(-1, -1, 7))
+    for _ in [1]
+    if (False % False)
+ ]
+```
+Python will output
+```
+1
+Traceback (most recent call last):
+  File "/home/asmund/Documents/IN5630/boa/testpy.py", line 5, in <module>
+    if (False % False)
+        ~~~~~~^~~~~~~
+ZeroDivisionError: division by zero
+```
+and boa will output
+```
+1
+1
+*** Runtime error: BadArgument "Modulo by zero"
+```
+The difference is due to a difference in when the if clause is executed for the first time, and thus when the runtime error is discovered. Boa will run longer than python, and will thus output at least as much.
