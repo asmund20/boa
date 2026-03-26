@@ -137,20 +137,9 @@ operate Mod (Boolean l) (Number r) = case r of
 operate Mod (Number l) (Boolean r) = case r of
     False -> Left "Modulo by zero"
     _ -> Right $ Number $ l `mod` boolToInt r
-operate Eq (Number l) (Number r) = Right $ Boolean $ l == r
-operate Eq (Boolean l) (Number r) = Right $ Boolean $ boolToInt l == r
-operate Eq (Number l) (Boolean r) = Right $ Boolean $ l == boolToInt r
-operate Eq (Boolean l) (Boolean r) = Right $ Boolean $ l == r
-operate Eq (Text l) (Text r) = Right $ Boolean $ l == r
-operate Eq (List l) (List r) = Right $ Boolean $ l == r
-operate Eq None None = Right $ Boolean True
-operate Eq _ _ = Right $ Boolean False
-operate Less (Boolean l) (Boolean r) = Right $ Boolean $ l < r
-operate Less (Number l) (Number r) = Right $ Boolean $ l < r
-operate Less (Text l) (Text r) = Right $ Boolean $ l < r
-operate Greater (Boolean l) (Boolean r) = Right $ Boolean $ l > r
-operate Greater (Number l) (Number r) = Right $ Boolean $ l > r
-operate Greater (Text l) (Text r) = Right $ Boolean $ l > r
+operate Eq l r = Right $ Boolean $ equalValues l r
+operate Less l r = Boolean <$> lessValue l r
+operate Greater l r = Boolean <$> lessValue r l
 operate In (Boolean l) (List r) = Right $ Boolean $ (Number $ boolToInt l) `elem` r || (Boolean l) `elem` r
 operate In l (List r) = Right $ Boolean $ l `elem` r
 operate In (Text l) (Text r) = Right $ Boolean $ l `isInfixOf` r
@@ -163,6 +152,37 @@ operate op v1 v2 =
             ++ ", "
             ++ show v2
             ++ "."
+
+lessValue :: Value -> Value -> Either ErrorMessage Bool
+lessValue None None = Right False
+lessValue (Number l) (Number r) = Right $ l < r
+lessValue (Boolean l) (Boolean r) = Right $ l < r
+lessValue (Boolean l) (Number r) = Right $ (boolToInt l) < r
+lessValue (Number l) (Boolean r) = Right $ l < boolToInt r
+lessValue (Text l) (Text r) = Right $ l < r
+lessValue (List []) (List r) = Right $ not $ null r
+lessValue (List l) (List []) = Right False
+lessValue (List (l : ls)) (List (r : rs)) = pure (&&) <*> (lessValue l r) <*> lessValue (List ls) (List rs)
+lessValue l r =
+    Left $
+        "Operator < "
+            ++ " with arguments "
+            ++ show l
+            ++ ", "
+            ++ show r
+            ++ "."
+
+equalValues :: Value -> Value -> Bool
+equalValues None None = True
+equalValues l@(Number _) r@(Number _) = l == r
+equalValues l@(Boolean _) r@(Boolean _) = l == r
+equalValues (Boolean l) (Number r) = (boolToInt l) == r
+equalValues (Number l) (Boolean r) = l == boolToInt r
+equalValues l@(Text _) r@(Text _) = l == r
+equalValues l@(List []) r@(List _) = l == r
+equalValues l@(List _) r@(List []) = l == r
+equalValues (List (l : ls)) (List (r : rs)) = (equalValues l r) && equalValues (List ls) (List rs)
+equalValues _ _ = False
 
 prettyValue :: Value -> String
 prettyValue = prettyValue' False
