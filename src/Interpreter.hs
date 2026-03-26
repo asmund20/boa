@@ -154,7 +154,6 @@ operate op v1 v2 =
             ++ "."
 
 lessValue :: Value -> Value -> Either ErrorMessage Bool
-lessValue None None = Right False
 lessValue (Number l) (Number r) = Right $ l < r
 lessValue (Boolean l) (Boolean r) = Right $ l < r
 lessValue (Boolean l) (Number r) = Right $ (boolToInt l) < r
@@ -162,6 +161,7 @@ lessValue (Number l) (Boolean r) = Right $ l < boolToInt r
 lessValue (Text l) (Text r) = Right $ l < r
 lessValue (List []) (List r) = Right $ not $ null r
 lessValue (List l) (List []) = Right False
+lessValue (List (None : ls)) (List (None : rs)) = lessValue (List ls) (List rs)
 lessValue (List (l : ls)) (List (r : rs)) = pure (&&) <*> (lessValue l r) <*> lessValue (List ls) (List rs)
 lessValue l r =
     Left $
@@ -325,10 +325,12 @@ eval (ListComprehension e cs) = do
                     case res of
                         List l -> processClauses ([(ident, v) : ctx | v <- l]) cs
                         Text t -> processClauses ([(ident, Text $ v : []) : ctx | v <- t]) cs
-                        _ ->
+                        v ->
                             abort $
-                                BadArgument
-                                    "For clause must have either a string or a list to the right of 'in'."
+                                BadArgument $
+                                    "For clause must have either a string or a list to the right of 'in', got "
+                                        ++ show v
+                                        ++ "."
                 )
                 contexts
 
