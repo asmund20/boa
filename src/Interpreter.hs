@@ -86,33 +86,51 @@ boolToInt :: Bool -> Integer
 boolToInt False = 0
 boolToInt True = 1
 
-operate :: OperationSymbol -> Value -> Value -> Either ErrorMessage Value
+operate ::
+    OperationSymbol -> Value -> Value -> Either ErrorMessage Value
 operate Plus (Number l) (Number r) = Right $ Number $ l + r
-operate Plus (Boolean l) (Boolean r) = Right $ Number $ boolToInt l + boolToInt r
-operate Plus (Boolean l) (Number r) = Right $ Number $ boolToInt l + r
-operate Plus (Number l) (Boolean r) = Right $ Number $ l + boolToInt r
+operate Plus (Boolean l) (Boolean r) =
+    Right $ Number $ boolToInt l + boolToInt r
+operate Plus (Boolean l) (Number r) =
+    Right $ Number $ boolToInt l + r
+operate Plus (Number l) (Boolean r) =
+    Right $ Number $ l + boolToInt r
 operate Plus (List l) (List r) = Right $ List $ l ++ r
 operate Plus (Text l) (Text r) = Right $ Text $ l ++ r
 operate Minus (Number l) (Number r) = Right $ Number $ l - r
-operate Minus (Boolean l) (Boolean r) = Right $ Number $ boolToInt l - boolToInt r
+operate Minus (Boolean l) (Boolean r) =
+    Right $ Number $ boolToInt l - boolToInt r
 operate Minus (Boolean l) (Number r) = Right $ Number $ boolToInt l - r
 operate Minus (Number l) (Boolean r) = Right $ Number $ l - boolToInt r
 operate Times (Number l) (Number r) = Right $ Number $ l * r
-operate Times (Boolean l) (Boolean r) = Right $ Number $ boolToInt l * boolToInt r
+operate Times (Boolean l) (Boolean r) =
+    Right $ Number $ boolToInt l * boolToInt r
 operate Times (Boolean l) (Number r) = Right $ Number $ boolToInt l * r
 operate Times (Number l) (Boolean r) = Right $ Number $ l * boolToInt r
-operate Times (Number l) (Text r) = Right $ Text $ take (fromIntegral l * length r) (concat $ repeat r)
-operate Times (Text l) (Number r) = Right $ Text $ take (fromIntegral r * length l) (concat $ repeat l)
+operate Times (Number l) (Text r) =
+    Right $ Text $ take (fromIntegral l * length r) (concat $ repeat r)
+operate Times (Text l) (Number r) =
+    Right $ Text $ take (fromIntegral r * length l) (concat $ repeat l)
 operate Times (Boolean l) (Text r) =
-    Right $ Text $ take (fromIntegral (boolToInt l) * length r) (concat $ repeat r)
+    Right $
+        Text $
+            take (fromIntegral (boolToInt l) * length r) (concat $ repeat r)
 operate Times (Text l) (Boolean r) =
-    Right $ Text $ take (fromIntegral (boolToInt r) * length l) (concat $ repeat l)
-operate Times (Number l) (List r) = Right $ List $ take (fromIntegral l * length r) (concat $ repeat r)
-operate Times (List l) (Number r) = Right $ List $ take (fromIntegral r * length l) (concat $ repeat l)
+    Right $
+        Text $
+            take (fromIntegral (boolToInt r) * length l) (concat $ repeat l)
+operate Times (Number l) (List r) =
+    Right $ List $ take (fromIntegral l * length r) (concat $ repeat r)
+operate Times (List l) (Number r) =
+    Right $ List $ take (fromIntegral r * length l) (concat $ repeat l)
 operate Times (Boolean l) (List r) =
-    Right $ List $ take (fromIntegral (boolToInt l) * length r) (concat $ repeat r)
+    Right $
+        List $
+            take (fromIntegral (boolToInt l) * length r) (concat $ repeat r)
 operate Times (List l) (Boolean r) =
-    Right $ List $ take (fromIntegral (boolToInt r) * length l) (concat $ repeat l)
+    Right $
+        List $
+            take (fromIntegral (boolToInt r) * length l) (concat $ repeat l)
 operate Div (Number l) (Number r) = case r of
     0 -> Left "Division by zero"
     _ -> Right $ Number $ l `div` r
@@ -140,7 +158,14 @@ operate Mod (Number l) (Boolean r) = case r of
 operate Eq l r = Right $ Boolean $ equalValues l r
 operate Less l r = Boolean <$> lessValue l r
 operate Greater l r = Boolean <$> lessValue r l
-operate In (Boolean l) (List r) = Right $ Boolean $ (Number $ boolToInt l) `elem` r || (Boolean l) `elem` r
+operate In (Boolean l) (List r) =
+    Right $
+        Boolean $
+            (Number $ boolToInt l) `elem` r || (Boolean l) `elem` r
+operate In l@(Number 0) (List r) =
+    Right $ Boolean $ l `elem` r || (Boolean False) `elem` r
+operate In l@(Number 1) (List r) =
+    Right $ Boolean $ l `elem` r || (Boolean True) `elem` r
 operate In l (List r) = Right $ Boolean $ l `elem` r
 operate In (Text l) (Text r) = Right $ Boolean $ l `isInfixOf` r
 operate op v1 v2 =
