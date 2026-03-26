@@ -13,6 +13,9 @@ import Test.Tasty.QuickCheck
 --
 -- TODO
 -- Decrease the clause size more than one for a for clause
+--
+-- TODO
+-- Stop adding parens all the time, only add for non-associative operators. That is, change the genOperator
 
 newtype BoaProgram = P String deriving (Eq)
 
@@ -40,16 +43,16 @@ instance Arbitrary BoaProgram where
         return $ P s
 
 genOrdType :: Gen BoaType
-genOrdType = oneof [return TBoolean, return TNumber, return TText]
+genOrdType = elements [TBoolean, TNumber, TText]
 
 genType :: Gen BoaType
 genType =
-    oneof
-        [ return TNone
-        , return TBoolean
-        , return TNumber
-        , return TText
-        , return TList
+    elements
+        [ TNone
+        , TBoolean
+        , TNumber
+        , TText
+        , TList
         ]
 
 sizedProgram :: Decls -> Int -> Gen (String, Decls)
@@ -65,7 +68,7 @@ sizedProgram decls 0 = oneof [assignment, expression]
         return (i ++ s1 ++ '=' : s2 ++ e, Map.insert i t decls)
     expression :: Gen (String, Decls)
     expression = do
-        e <- sized $ sizedExpression decls
+        (e, _) <- sized $ typedSizedExpression TAny decls
         return (e, emptyDecls)
 sizedProgram decls n = do
     (s1, decls') <- sizedProgram decls 0
@@ -134,40 +137,60 @@ identGen = do
             , (1, elements ['0' .. '9'])
             ]
 
-sizedExpression :: Decls -> Int -> Gen String
-sizedExpression decls 0 = do
-    (e, _) <- exprLiteral decls
-    return e
-sizedExpression decls n = do
-    (e, _) <- typedSizedExpression TAny decls n
-    return e
+identifierOrOther ::
+    BoaType -> Decls -> Gen (String, BoaType) -> Gen (String, BoaType)
+identifierOrOther t d gen = do
+    let i = declsOfType t d
+    case i of
+        [] -> gen
+        otherwise ->
+            oneof
+                [ (\ident -> (ident, t)) <$> elements i
+                , gen
+                ]
 
--- TODO: All typedSizedExpression should have the possibility of choosing an identifier with the correct type
 -- data BoaType = TNone | TBoolean | TNumber | TText | TList | TAny
 typedSizedExpression ::
     BoaType -> Decls -> Int -> Gen (String, BoaType)
-typedSizedExpression TNone _ 0 = return ("None", TNone)
-typedSizedExpression TBoolean _ 0 =
-    oneof
-        [ return ("True", TBoolean)
-        , return ("False", TBoolean)
-        ]
-typedSizedExpression TNumber _ 0 = do
-    n <- show <$> arbitrarySizedIntegral
-    return $ (n, TNumber)
-typedSizedExpression TText _ 0 = do
-    s <- sized sizedStringConst
-    return $ (s, TText)
-typedSizedExpression TList decls 0 = return ("[]", TAny)
-typedSizedExpression TAny decls 0 = exprLiteral decls
+typedSizedExpression TNone decls 0 = identifierOrOther TNone decls (return ("None", TNone))
+typedSizedExpression TBoolean decls 0 =
+    identifierOrOther
+        TBoolean
+        decls
+        ( elements
+            [ ("True", TBoolean)
+            , ("False", TBoolean)
+            ]
+        )
+typedSizedExpression TNumber decls 0 =
+    identifierOrOther
+        TNumber
+        decls
+        ( do
+            n <- show <$> arbitrarySizedIntegral
+            return $ (n, TNumber)
+        )
+typedSizedExpression TText decls 0 =
+    identifierOrOther
+        TText
+        decls
+        ( do
+            s <- sized sizedStringConst
+            return $ (s, TText)
+        )
+typedSizedExpression TList decls 0 = identifierOrOther TList decls (return ("[]", TAny))
 typedSizedExpression TAny decls n = do
     t <- genType
     typedSizedExpression t decls n
 typedSizedExpression TNone decls n =
-    frequency
-        [ (1, return ("None", TNone))
-        , (2, printCall)
-        ]
+    identifierOrOther
+        TNone
+        decls
+        ( frequency
+            [ (1, return ("None", TNone))
+            , (2, printCall)
+            ]
+        )
   where
     printCall = do
         partitioning <- choose (1, 10)
@@ -178,7 +201,11 @@ typedSizedExpression TNone decls n =
         s2 <- genWhiteSpaces
         s3 <- genWhiteSpaces
         return ("print" ++ s1 ++ "(" ++ s2 ++ csv ++ s3 ++ ")", TNone)
-typedSizedExpression TList decls n = oneof [listExp, listComprehension, rangeCall]
+typedSizedExpression TList decls n =
+    identifierOrOther
+        TList
+        decls
+        (oneof [listExp, listComprehension, rangeCall])
   where
     listExp = do
         partitioning <- choose (1, 10)
@@ -212,11 +239,13 @@ typedSizedExpression TList decls n = oneof [listExp, listComprehension, rangeCal
         i <- identGen
         (l, t) <-
             oneof
-                [typedSizedExpression TList d expLength, typedSizedExpression TText d expLength]
+                [ typedSizedExpression TList d expLength
+                , typedSizedExpression TText d expLength
+                ]
         s1 <- genWhiteSpaces
         s2 <- genWhiteSpaces
         s3 <- genWhiteSpaces
-        return ("for " ++ s1 ++ i ++ s2 ++ " in " ++ s3 ++ l, Map.insert i t d)
+        return (" for " ++ s1 ++ i ++ s2 ++ " in " ++ s3 ++ l, Map.insert i t d)
     genIfClause :: Int -> Decls -> Gen (String, Decls)
     genIfClause expLength decls = do
         (e, _) <-
@@ -224,8 +253,8 @@ typedSizedExpression TList decls n = oneof [listExp, listComprehension, rangeCal
                 [ typedSizedExpression TAny decls expLength
                 , typedSizedExpression TBoolean decls expLength
                 ]
-        s1 <- genWhiteSpaces1
-        return $ ("if" ++ s1 ++ e, decls)
+        s1 <- genWhiteSpaces
+        return $ (" if " ++ s1 ++ e, decls)
     genClauses :: Int -> Int -> Decls -> Gen (String, Decls)
     genClauses 0 expLength decls = return ("", decls)
     genClauses clauseLength expLength decls = do
@@ -234,18 +263,16 @@ typedSizedExpression TList decls n = oneof [listExp, listComprehension, rangeCal
         (cs, decls) <- genClauses (clauseLength - 1) expLength decls
         s1 <- genWhiteSpaces1
         return (c ++ s1 ++ cs, decls)
-typedSizedExpression TNumber decls n =
-    oneof
-        [ binaryExp TNumber decls n
-        , parenExp TNumber decls n
-        , typedSizedExpression TNumber decls 0
-        ]
 typedSizedExpression t decls n =
-    oneof
-        [ binaryExp t decls n
-        , parenExp t decls n
-        , typedSizedExpression t decls 0
-        ]
+    identifierOrOther
+        t
+        decls
+        ( oneof
+            [ binaryExp t decls n
+            , parenExp t decls n
+            , typedSizedExpression t decls 0
+            ]
+        )
 
 binaryExp :: BoaType -> Decls -> Int -> Gen (String, BoaType)
 binaryExp t decls n = do
@@ -281,19 +308,21 @@ genCsvExprs t n decls exprSize = do
 genOperator :: BoaType -> Gen (String, BoaType, BoaType)
 genOperator TBoolean = do
     o <-
-        oneof
-            [ return "=="
-            , return "!="
-            , return "<"
-            , return "<="
-            , return ">"
-            , return ">="
-            , return " in "
-            , return " not in "
+        elements
+            [ "=="
+            , "!="
+            , "<"
+            , "<="
+            , ">"
+            , ">="
+            , " in "
+            , " not in "
+            , "+"
+            , "-"
             ]
     case o of
-        " in " -> oneof [return (o, TAny, TList), return (o, TText, TText)]
-        " not in " -> oneof [return (o, TAny, TList), return (o, TText, TText)]
+        " in " -> elements [(o, TAny, TList), (o, TText, TText)]
+        " not in " -> elements [(o, TAny, TList), (o, TText, TText)]
         "<" -> do
             t <- genOrdType
             return (o, t, t)
@@ -308,73 +337,50 @@ genOperator TBoolean = do
             return (o, t, t)
         "==" -> return (o, TAny, TAny)
         "!=" -> return (o, TAny, TAny)
+        "+" -> return (o, TNumber, TNumber)
+        "-" -> return (o, TNumber, TNumber)
 genOperator TNumber = do
     o <-
-        oneof [return "+", return "-", return "*", return "//", return "%"]
+        elements ["+", "-", "*", "//", "%"]
     t1 <- frequency [(1, return TBoolean), (2, return TNumber)]
     t2 <- frequency [(5, return TNumber), (1, return TBoolean)]
     return (o, t1, t2)
 genOperator TText = do
-    o <- oneof [return "+", return "*"]
+    o <- elements ["+", "*"]
     case o of
         "+" -> return (o, TText, TText)
         "*" -> do
-            l <- oneof [return TNumber, return TBoolean, return TText]
+            l <- elements [TNumber, TBoolean, TText]
             case l of
                 TText -> do
-                    r <- oneof [return TNumber, return TBoolean]
+                    r <- elements [TNumber, TBoolean]
                     return (o, TText, r)
                 _ -> return (o, l, TText)
 genOperator TList = do
-    o <- oneof [return "+", return "*"]
+    o <- elements ["+", "*"]
     case o of
         "+" -> return (o, TList, TList)
         "*" -> do
-            l <- oneof [return TNumber, return TBoolean, return TList]
+            l <- elements [TNumber, TBoolean, TList]
             case l of
                 TList -> do
-                    r <- oneof [return TNumber, return TBoolean]
+                    r <- elements [TNumber, TBoolean]
                     return (o, TList, r)
                 _ -> return (o, l, TList)
 genOperator TAny = do
     t <-
-        oneof [return TBoolean, return TNumber, return TText, return TList]
+        elements [TBoolean, TNumber, TText, TList]
     genOperator t
-
-eqOperator :: Gen String
-eqOperator = oneof [return "==", return "!="]
-
-relOperator :: Gen String
-relOperator = oneof [return "<", return "<=", return ">", return ">="]
-
-inOperator :: Gen String
-inOperator = oneof [return " in ", return " not in "]
 
 typeGen :: Gen BoaType
 typeGen =
-    oneof
-        [ return TNone
-        , return TBoolean
-        , return TNumber
-        , return TText
-        , return TList
+    elements
+        [ TNone
+        , TBoolean
+        , TNumber
+        , TText
+        , TList
         ]
-
-exprLiteral :: Decls -> Gen (String, BoaType)
-exprLiteral decls
-    | Map.null decls = oneof [numConst, stringConst, none, true, false]
-    | otherwise = oneof [numConst, stringConst, none, true, false, ident]
-  where
-    numConst = do
-        n <- show <$> arbitrarySizedIntegral
-        return (n, TNumber)
-    stringConst = do
-        s <- sized sizedStringConst
-        return (s, TText)
-    none = return ("None", TNone)
-    true = return ("True", TBoolean)
-    false = return ("False", TBoolean)
-    ident = elements $ Map.toList decls
 
 sizedStringConst :: Int -> Gen String
 sizedStringConst size = do
@@ -393,12 +399,12 @@ sizedStringConst size = do
                         )
                     ,
                         ( 1
-                        , oneof
-                            [ return "\\'"
-                            , return "\\\\"
-                            , return "\\n"
-                            , return "\\\n"
-                            , return "\\\r\n"
+                        , elements
+                            [ "\\'"
+                            , "\\\\"
+                            , "\\n"
+                            , "\\\n"
+                            , "\\\r\n"
                             ]
                         )
                     ]
@@ -408,9 +414,7 @@ sizedStringConst size = do
     charToString c = [c]
 
 genEndOfline :: Gen String
-genEndOfline =
-    oneof
-        [return "\r\n", return "\n"]
+genEndOfline = elements ["\r\n", "\n"]
 
 genWhiteSpace :: Gen String
 genWhiteSpace =
