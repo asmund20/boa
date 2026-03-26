@@ -68,7 +68,7 @@ test p = Monadic.monadicIO $ do
         Right p -> return $ Right $ execute p
 
     let (caseTag, stdout_boa, stderr_boa, ok) = case boaOutput of
-            Left e -> ("parse-failed", "", show e, "SyntaxError" `isInfixOf` stderr_py)
+            Left e -> ("parse-failed", "", show e, False)
             Right (o, e) ->
                 let stdout_boa = if null o then "" else intercalate "\n" o ++ "\n"
                  in case e of
