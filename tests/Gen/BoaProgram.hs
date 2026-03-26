@@ -7,16 +7,6 @@ import Parser
 import Syntax
 import Test.Tasty.QuickCheck
 
--- TODO
--- Python: 'not' after an operator must be parenthesized
--- Possibly add some not expressions somewhere (must be parenthesized, that can be handled outside)
---
--- TODO
--- Decrease the clause size more than one for a for clause
---
--- TODO
--- Stop adding parens all the time, only add for non-associative operators. That is, change the genOperator
-
 newtype BoaProgram = P String deriving (Eq)
 
 instance Show BoaProgram where
