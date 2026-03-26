@@ -190,38 +190,63 @@ prettyValue = prettyValue' False
     prettyValue' _ (List vs) =
         "[" ++ intercalate ", " (map (prettyValue' True) vs) ++ "]"
 
--- apply :: FunctionName -> FunctionArguments -> Boa Value
--- apply name arguments = case name of
---     "range" -> case arguments of
---         [Number x] -> return $ List [Number a | a <- [0 .. x - 1]]
---         [Number x, Number y] -> return $ List [Number a | a <- [x .. y - 1]]
---         [Number x, Number y, Number 0] -> abort $ BadArgument "Third argument to range must be nonzero"
---         [Number x, Number y, Number z] -> return $ List [Number a | a <- [x, x + z .. y - 1]]
---         _ -> abort $ BadArgument $ unwords $ map show arguments
---     "print" -> output (unwords $ map prettyValue arguments) >> return None
---     _ -> abort $ BadFunction name
---   where
---     range start end step = undefined
-
 apply :: FunctionName -> FunctionArguments -> Boa Value
 apply name arguments = case name of
     "range" -> case arguments of
-        [Number stop] -> return $ List $ range 0 stop 1
-        [Number start, Number stop] -> return $ List $ range start stop 1
+        [stop] -> range (Number 0) stop (Number 1)
+        [start, stop] -> range start stop (Number 1)
         [_, _, Number 0] -> abort $ BadArgument "Third argument to range must be nonzero"
-        [Number start, Number stop, Number step] -> return $ List $ range start stop step
-        _ -> abort $ BadArgument $ unwords $ map show arguments
+        [_, _, Boolean False] -> abort $ BadArgument "Third argument to range must be nonzero"
+        [start, stop, step] -> range start stop step
+        _ ->
+            abort $
+                BadArgument $
+                    "Bad arguments to range:" ++ (unwords $ map show arguments)
     "print" -> output (unwords $ map prettyValue arguments) >> return None
     _ -> abort $ BadFunction name
   where
-    range :: Integer -> Integer -> Integer -> [Value]
-    range start stop step =
-        takeWhile
-            (\(Number v) -> (step > 0 && v < stop) || (step < 0 && v > stop))
-            ( map
-                (\i -> Number (start + step * i))
-                [0 ..]
-            )
+    toNumeric :: Value -> Maybe Integer
+    toNumeric (Boolean b) = Just $ boolToInt b
+    toNumeric (Number n) = Just n
+    toNumeric _ = Nothing
+    wrongArgument :: Int -> Maybe a -> String
+    wrongArgument _ (Just _) = ""
+    wrongArgument 1 Nothing = "First range argument is not numeric. "
+    wrongArgument 2 Nothing = "Second range argument is not numeric. "
+    wrongArgument 3 Nothing = "Third range argument is not numeric. "
+    range :: Value -> Value -> Value -> Boa Value
+    range startValue stopValue stepValue = do
+        let startMaybe = toNumeric startValue
+            stopMaybe = toNumeric stopValue
+            stepMaybe = toNumeric stepValue
+            errorMessage =
+                wrongArgument 1 startMaybe
+                    ++ wrongArgument 2 stopMaybe
+                    ++ wrongArgument 3 stepMaybe
+        if not $ null errorMessage
+            then abort $ BadArgument errorMessage
+            else do
+                let Just start = startMaybe
+                    Just stop = stopMaybe
+                    Just step = stepMaybe
+                return $
+                    List $
+                        takeWhile
+                            (\(Number v) -> (step > 0 && v < stop) || (step < 0 && v > stop))
+                            ( map
+                                (\i -> Number (start + step * i))
+                                [0 ..]
+                            )
+
+-- do
+--     let start'' = toNumeric start'
+--         stop'' = toNumeric stop'
+--         step'' = toNumeric step'
+--         error = concat $ lefts [start'', stop'', step'']
+--      in case error of
+--             _ : _ -> undefined -- return error message
+--             [] -> do
+--                 let [start, stop, step] = rights [start'', stop'', step'']
 
 -- Helper function for managing environments in list comprehensions. Takes an environment
 -- and an expression and makes a Boa Value monad from it
@@ -260,10 +285,6 @@ eval (ListComprehension e cs) = do
     processClauses ::
         [[(VariableName, Value)]] -> [Clause] -> Boa [[(VariableName, Value)]]
     processClauses contexts [] = return contexts
-    processClauses contexts ((If condExpr1) : (If condExpr2) : rest) =
-        processClauses
-            contexts
-            ((If $ Operation Times condExpr1 condExpr2) : rest)
     processClauses contexts ((If condExpr) : rest) = do
         keptContexts <-
             catMaybes
