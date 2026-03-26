@@ -48,8 +48,8 @@ replaceAll old new = replace'
         | otherwise = x : replace' xs
 
 diffAt :: String -> String -> Int -> (String, String, Int)
-diffAt [] r n = ("", r, n)
-diffAt l [] n = (l, "", n)
+diffAt [] r n = ("<End>", r, n)
+diffAt l [] n = (l, "<End>", n)
 diffAt (l : ls) (r : rs) n
     | l == r = diffAt ls rs (n + 1)
     | otherwise = (l : ls, r : rs, n)
@@ -102,7 +102,7 @@ test p = Monadic.monadicIO $ do
                 ++ stdout_boa
                 ++ "\nstderr_boa:\n"
                 ++ stderr_boa
-                ++ if caseTag /= "parse-failed" && not (null boa_diff) && not (null python_diff)
+                ++ if caseTag /= "parse-failed"
                     then
                         "\n\n\nFirst different character at "
                             ++ show diffIndex
