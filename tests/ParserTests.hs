@@ -4,6 +4,7 @@ import Control.Monad (forM_)
 import Data.Either (isLeft)
 import Data.List (intercalate, isInfixOf, isPrefixOf)
 import GHC.IO.Exception (ExitCode)
+import Gen.BoaExpression
 import Gen.BoaProgram
 import Interpreter
 import Parser
@@ -59,10 +60,9 @@ diffAt (l : ls) (r : rs) n
     | l == r = diffAt ls rs (n + 1)
     | otherwise = (l : ls, r : rs, n)
 
-test :: BoaProgram -> Property
-test p = Monadic.monadicIO $ do
-    let (P code) = p
-        pythonsource =
+testString :: String -> Property
+testString code = Monadic.monadicIO $ do
+    let pythonsource =
             "def listrange(*x):\n  return list(range(*x))\n"
                 ++ replaceAll "range" "listrange" code
 
@@ -73,21 +73,42 @@ test p = Monadic.monadicIO $ do
         Right p -> return $ Right $ execute p
 
     let (caseTag, stdout_boa, stderr_boa, ok) = case boaOutput of
-            Left e -> ("parse-failed", "", show e, False)
+            Left e -> ("parse-failed", "", show e, "SyntaxError" `isInfixOf` stderr_py)
             Right (o, e) ->
                 let stdout_boa = if null o then "" else intercalate "\n" o ++ "\n"
                  in case e of
                         Nothing ->
                             ("no-error", stdout_boa, "", stdout_py == stdout_boa)
                         Just e ->
-                            if stdout_py == stdout_boa
+                            if stdout_py == stdout_boa && not (null stdout_boa)
                                 then
-                                    ( "runtime-error-same-stdout"
+                                    ( "runtime-error-same-non-empty-stdout"
                                     , stdout_boa
                                     , show e
                                     , ("Traceback" `isInfixOf` stderr_py)
                                     )
-                                else ("runtime-error-different-stdout", stdout_boa, show e, False)
+                                else
+                                    if null stdout_boa && null stdout_py
+                                        then
+                                            ( "runtime-error-both-stdout-empty"
+                                            , stdout_boa
+                                            , show e
+                                            , ("Traceback" `isInfixOf` stderr_py)
+                                            )
+                                        else
+                                            if "Operator Mod with arguments Text" `isInfixOf` stderr_boa
+                                                then
+                                                    ( "modulo-as-string-formatter-in-py"
+                                                    , stdout_boa
+                                                    , show e
+                                                    , True
+                                                    )
+                                                else
+                                                    ( "runtime-error-different-stdout"
+                                                    , stdout_boa
+                                                    , show e
+                                                    , False
+                                                    )
         (boa_diff, python_diff, diffIndex) = diffAt stdout_boa stdout_py 0
 
     Monadic.monitor $ label caseTag
@@ -120,6 +141,12 @@ test p = Monadic.monadicIO $ do
                     else ""
 
     Monadic.assert ok
+
+testBoaProgram :: BoaProgram -> Property
+testBoaProgram (P p) = testString p
+
+testBoaExpression :: BoaExpression -> Property
+testBoaExpression (E p) = testString p
 
 assertLeft :: Either a b -> Assertion
 assertLeft = assertBool "expected left" . isLeft
@@ -173,5 +200,11 @@ full_test =
                 ]
                 (repeat isLeft)
                 "Should fail to parse badly formed string: "
-        , testProperty "Same result as python" test
+        , testCase "List times negative number is empty" $
+            execute <$> parseString "print([1, 2] * -4)"
+                @?= execute <$> parseString "print([])"
+        , testCase "Assiciativity" $ parseString "5 + 1 + 2" @=? parseString "((5+1)+2)"
+        , testProperty "Same result as python (full programs)" testBoaProgram
+        , localOption (QuickCheckTests 200) $
+            testProperty "Same result as python (single expressions)" testBoaExpression
         ]

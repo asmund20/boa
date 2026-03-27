@@ -41,4 +41,4 @@ test-suite boa-test
     type:             exitcode-stdio-1.0
     hs-source-dirs:   tests
     main-is:          Test.hs
-    other-modules:    InterpreterTests, ParserTests, Gen.BoaProgram
+    other-modules:    InterpreterTests, ParserTests, Gen.BoaProgram, Gen.BoaExpression

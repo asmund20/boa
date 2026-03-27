@@ -28,7 +28,7 @@ emptyDecls :: Decls
 emptyDecls = Map.empty
 
 instance Arbitrary BoaProgram where
-    arbitrary = resize 13 $ do
+    arbitrary = scale (min 13) $ do
         (s, _) <- sized $ sizedProgram emptyDecls
         return $ P s
 
@@ -106,6 +106,9 @@ identGen = do
                , "continue"
                , "global"
                , "pass"
+               , "listrange"
+               , "range"
+               , "print"
                ]
         then
             identGen

@@ -179,8 +179,8 @@ listBodyEnd e = clauses <|> commaSepExprs
     clauses :: Parser Expression
     clauses =
         (ListComprehension e)
-            <$> ( pure (:)
-                    <*> (consumeSpaces forClause)
+            <$> ( (:)
+                    <$> (consumeSpaces forClause)
                     <*> many (consumeSpaces (forClause <|> ifClause))
                 )
     commaSepExprs :: Parser Expression
@@ -188,7 +188,7 @@ listBodyEnd e = clauses <|> commaSepExprs
         ListExpression
             <$> ( ( char ','
                         >> spaces
-                        >> pure (:) <*> pure e <*> sepBy1 expr (consumeSpaces $ char ',')
+                        >> (e :) <$> sepBy1 expr (consumeSpaces $ char ',')
                   )
                     <|> return [e]
                 )
@@ -207,7 +207,7 @@ ifClause = string "if" >> spaces >> If <$> expr
 
 identifier :: Parser String
 identifier = do
-    id <- pure (:) <*> (letter <|> char '_') <*> many identifierBodyPart <* spaces
+    id <- (:) <$> (letter <|> char '_') <*> many identifierBodyPart <* spaces
     if id `elem` ["for", "if", "in"]
         then
             fail $ "Got reserved keyword " ++ id ++ " as an identifier, use different name."
