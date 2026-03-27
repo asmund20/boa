@@ -206,7 +206,12 @@ ifClause :: Parser Clause
 ifClause = string "if" >> spaces >> If <$> expr
 
 identifier :: Parser String
-identifier = pure (:) <*> (letter <|> char '_') <*> many identifierBodyPart <* spaces
+identifier = do
+    id <- pure (:) <*> (letter <|> char '_') <*> many identifierBodyPart <* spaces
+    if id `elem` ["for", "if", "in"]
+        then
+            fail $ "Got reserved keyword " ++ id ++ " as an identifier, use different name."
+        else return id
 
 identifierBodyPart :: Parser Char
 identifierBodyPart = letter <|> digit <|> char '_'
