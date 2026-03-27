@@ -1,16 +1,21 @@
 module ParserTests (full_test) where
 
+import Control.Monad (forM_)
+import Data.Either (isLeft)
 import Data.List (intercalate, isInfixOf, isPrefixOf)
 import GHC.IO.Exception (ExitCode)
 import Gen.BoaProgram
 import Interpreter
 import Parser
+import Syntax
 import System.IO
 import System.Process
 import qualified Test.QuickCheck.Monadic as Monadic
 import Test.Tasty
+import Test.Tasty.HUnit
 import Test.Tasty.QuickCheck
 import Text.Parsec (parse)
+import Text.ParserCombinators.Parsec (parseTest)
 
 runPythonCode :: String -> IO (String, String, ExitCode)
 runPythonCode code = do
@@ -116,9 +121,57 @@ test p = Monadic.monadicIO $ do
 
     Monadic.assert ok
 
+assertLeft :: Either a b -> Assertion
+assertLeft = assertBool "expected left" . isLeft
+
+checkSuccess :: Program -> Either ParseError Program -> Bool
+checkSuccess _ (Left _) = False
+checkSuccess p1 (Right p2) = p1 == p2
+
+testMany :: [String] -> [Either ParseError Program -> Bool] -> String -> IO ()
+testMany sources tests assertionMessage = forM_ (zip sources tests) $ \(src, test) ->
+    assertBool (assertionMessage ++ src) $ test $ parseString src
+
 full_test :: TestTree
 full_test =
     testGroup
         "Boa test suite"
-        [ testProperty "Same result as python" test
+        [ testCase
+            "Assignment"
+            $ parseString "a1_4 = 5" @?= Right [Define "a1_4" $ Constant $ Number 5]
+        , testCase
+            "Identifier not starting with number"
+            $ assertLeft
+            $ parseString "1a = 5"
+        , testCase
+            "Reserved keywords"
+            $ testMany
+                ["None = 1", "True = 1", "False = 1", "for = 1", "if = 1", "in = 1", "not = 1"]
+                (repeat isLeft)
+                "Should fail to parse assignment to reserved keywords: "
+        , testCase "Well-formed numbers" $
+            testMany
+                ["123", "-78", "-0", "100"]
+                [ checkSuccess [Execute $ Constant $ Number 123]
+                , checkSuccess [Execute $ Constant $ Number $ -78]
+                , checkSuccess [Execute $ Constant $ Number 0]
+                , checkSuccess [Execute $ Constant $ Number 100]
+                ]
+                "Should parse to constant: "
+        , testCase "Badly formed numbers" $
+            testMany
+                ["007", "+2\"", "- 4"]
+                (repeat isLeft)
+                "Should fail to parse badly formed numbers: "
+        , testCase "badlyFormedString" $
+            testMany
+                [ "\"Hello\""
+                , "'\n'"
+                , "'\\'"
+                , "'\\r'"
+                , "'\r'"
+                ]
+                (repeat isLeft)
+                "Should fail to parse badly formed string: "
+        , testProperty "Same result as python" test
         ]
