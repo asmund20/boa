@@ -313,15 +313,13 @@ eval (Not e) = do
     v <- truthy <$> eval e
     return $ Boolean (not v)
 eval (Call name input) = do
-    args <- eval $ ListExpression input
-    case args of
-        List a -> apply name a
+    ~(List args) <- eval $ ListExpression input
+    apply name args
 eval (ListExpression []) = return $ List []
 eval (ListExpression (x : xs)) = do
     x <- eval x
-    xs <- eval $ ListExpression xs
-    case xs of
-        List xs -> return $ List (x : xs)
+    ~(List xs) <- eval $ ListExpression xs
+    return $ List (x : xs)
 eval (ListComprehension e cs) = do
     finalContexts <- processClauses [[]] cs
     results <- mapM (`evalUnderContext` e) finalContexts
@@ -330,18 +328,17 @@ eval (ListComprehension e cs) = do
     processClauses ::
         [[(VariableName, Value)]] -> [Clause] -> Boa [[(VariableName, Value)]]
     processClauses contexts [] = return contexts
-    processClauses contexts ((If condExpr) : rest) = do
-        keptContexts <-
-            catMaybes
-                <$> mapM
-                    ( \ctx -> do
-                        val <- evalUnderContext ctx condExpr
-                        if truthy val
-                            then return (Just ctx)
-                            else return Nothing
-                    )
-                    contexts
-        processClauses keptContexts rest
+    processClauses contexts ((If condExpr) : rest) =
+        concat
+            <$> catMaybes
+            <$> mapM
+                ( \ctx -> do
+                    val <- evalUnderContext ctx condExpr
+                    if truthy val
+                        then (Just <$> processClauses [ctx] rest)
+                        else return Nothing
+                )
+                contexts
     processClauses contexts ((For ident iterableExpr : cs)) =
         concat
             <$> mapM
