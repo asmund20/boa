@@ -1,3 +1,5 @@
+{-# LANGUAGE LambdaCase #-}
+
 module Interpreter where
 
 import Control.Monad
@@ -131,30 +133,18 @@ operate Times (List l) (Boolean r) =
     Right $
         List $
             take (fromIntegral (boolToInt r) * length l) (concat $ repeat l)
-operate Div (Number l) (Number r) = case r of
-    0 -> Left "Division by zero"
-    _ -> Right $ Number $ l `div` r
-operate Div (Boolean l) (Boolean r) = case r of
-    False -> Left "Division by zero"
-    True -> Right $ Number $ boolToInt l `div` boolToInt r
-operate Div (Boolean l) (Number r) = case r of
-    0 -> Left "Division by zero"
-    _ -> Right $ Number $ boolToInt l `div` r
-operate Div (Number l) (Boolean r) = case r of
-    False -> Left "Division by zero"
-    _ -> Right $ Number $ l `div` boolToInt r
-operate Mod (Number l) (Number r) = case r of
-    0 -> Left "Modulo by zero"
-    _ -> Right $ Number $ l `mod` r
-operate Mod (Boolean l) (Boolean r) = case r of
-    False -> Left "Modulo by zero"
-    True -> Right $ Number $ boolToInt l `mod` boolToInt r
-operate Mod (Boolean l) (Number r) = case r of
-    0 -> Left "Modulo by zero"
-    _ -> Right $ Number $ boolToInt l `mod` r
-operate Mod (Number l) (Boolean r) = case r of
-    False -> Left "Modulo by zero"
-    _ -> Right $ Number $ l `mod` boolToInt r
+operate Div _ (Number 0) = Left "Division by zero"
+operate Div _ (Boolean False) = Left "Division by zero"
+operate Div (Number l) (Number r) = Right $ Number $ l `div` r
+operate Div l@(Number _) (Boolean True) = Right l
+operate Div (Boolean l) (Boolean True) = Right $ Number $ boolToInt l
+operate Div (Boolean l) (Number r) = Right $ Number $ boolToInt l `div` r
+operate Mod _ (Number 0) = Left "Modulo by zero"
+operate Mod _ (Boolean False) = Left "Modulo by zero"
+operate Mod (Number l) (Number r) = Right $ Number $ l `mod` r
+operate Mod (Number _) (Boolean True) = Right $ Number 0
+operate Mod (Boolean l) (Boolean True) = Right $ Number 0
+operate Mod (Boolean l) (Number r) = Right $ Number $ boolToInt l `mod` r
 operate Eq l r = Right $ Boolean $ equalValues l r
 operate Less l r = Boolean <$> lessValue l r
 operate Greater l r = Boolean <$> lessValue r l
@@ -209,89 +199,54 @@ equalValues l@(List _) r@(List []) = l == r
 equalValues (List (l : ls)) (List (r : rs)) = (equalValues l r) && equalValues (List ls) (List rs)
 equalValues _ _ = False
 
-prettyValue :: Value -> String
-prettyValue = prettyValue' False
+str :: Value -> String
+str None = "None"
+str (Boolean b) = show b
+str (Number n) = show n
+str (Text s) = s
+str (List l) = "[" ++ intercalate ", " (map repr l) ++ "]"
+
+repr :: Value -> String
+repr (Text s)
+    | '"' `elem` s = '\'' : concat (map singles s) ++ "'"
+    | '\'' `elem` s = '"' : concat (map doubles s) ++ "\""
+    | otherwise = '\'' : concat (map singles s) ++ "'"
   where
-    prettyValue' _ None = "None"
-    prettyValue' _ (Boolean True) = "True"
-    prettyValue' _ (Boolean False) = "False"
-    prettyValue' _ (Number n) = show n
-    prettyValue' False (Text s) = s
-    prettyValue' True (Text s)
-        | '"' `elem` s = '\'' : concat (map singles s) ++ "'"
-        | '\'' `elem` s = '"' : concat (map doubles s) ++ "\""
-        | otherwise = '\'' : concat (map singles s) ++ "'"
-      where
-        doubles c = case c of
-            '\\' -> "\\\\"
-            '"' -> "\\\""
-            '\n' -> "\\n"
-            c -> c : []
-        singles c = case c of
-            '\\' -> "\\\\"
-            '\'' -> "\\'"
-            '\n' -> "\\n"
-            c -> c : []
-    prettyValue' _ (List vs) =
-        "[" ++ intercalate ", " (map (prettyValue' True) vs) ++ "]"
+    doubles c = case c of
+        '\\' -> "\\\\"
+        '"' -> "\\\""
+        '\n' -> "\\n"
+        c -> c : []
+    singles c = case c of
+        '\\' -> "\\\\"
+        '\'' -> "\\'"
+        '\n' -> "\\n"
+        c -> c : []
+repr v = str v
 
 apply :: FunctionName -> FunctionArguments -> Boa Value
-apply name arguments = case name of
-    "range" -> case arguments of
-        [stop] -> range (Number 0) stop (Number 1)
-        [start, stop] -> range start stop (Number 1)
-        [_, _, Number 0] -> abort $ BadArgument "Third argument to range must be nonzero"
-        [_, _, Boolean False] -> abort $ BadArgument "Third argument to range must be nonzero"
-        [start, stop, step] -> range start stop step
-        _ ->
-            abort $
-                BadArgument $
-                    "Bad arguments to range:" ++ (unwords $ map show arguments)
-    "print" -> output (unwords $ map prettyValue arguments) >> return None
-    _ -> abort $ BadFunction name
+apply "print" arguments = output (unwords $ map str arguments) >> return None
+apply "range" arguments =
+    range
+        (map (\case Boolean b -> Number $ boolToInt b; other -> other) arguments)
   where
-    toNumeric :: Value -> Maybe Integer
-    toNumeric (Boolean b) = Just $ boolToInt b
-    toNumeric (Number n) = Just n
-    toNumeric _ = Nothing
-    wrongArgument :: Int -> Maybe a -> String
-    wrongArgument _ (Just _) = ""
-    wrongArgument 1 Nothing = "First range argument is not numeric. "
-    wrongArgument 2 Nothing = "Second range argument is not numeric. "
-    wrongArgument 3 Nothing = "Third range argument is not numeric. "
-    range :: Value -> Value -> Value -> Boa Value
-    range startValue stopValue stepValue = do
-        let startMaybe = toNumeric startValue
-            stopMaybe = toNumeric stopValue
-            stepMaybe = toNumeric stepValue
-            errorMessage =
-                wrongArgument 1 startMaybe
-                    ++ wrongArgument 2 stopMaybe
-                    ++ wrongArgument 3 stepMaybe
-        if not $ null errorMessage
-            then abort $ BadArgument errorMessage
-            else do
-                let Just start = startMaybe
-                    Just stop = stopMaybe
-                    Just step = stepMaybe
-                return $
-                    List $
-                        takeWhile
-                            (\(Number v) -> (step > 0 && v < stop) || (step < 0 && v > stop))
-                            ( map
-                                (\i -> Number (start + step * i))
-                                [0 ..]
-                            )
-
--- do
---     let start'' = toNumeric start'
---         stop'' = toNumeric stop'
---         step'' = toNumeric step'
---         error = concat $ lefts [start'', stop'', step'']
---      in case error of
---             _ : _ -> undefined -- return error message
---             [] -> do
---                 let [start, stop, step] = rights [start'', stop'', step'']
+    range :: [Value] -> Boa Value
+    range [Number stop] = calculateRange 0 stop 1
+    range [Number start, Number stop] = calculateRange start stop 1
+    range [Number start, Number stop, Number 0] = abort $ BadArgument "Range: Step argument must be nonzero"
+    range [Number start, Number stop, Number step] = calculateRange start stop step
+    range args = abort $ BadArgument $ "Range: " ++ intercalate ", " (map str args)
+    calculateRange :: Integer -> Integer -> Integer -> Boa Value
+    calculateRange start stop step =
+        return $
+            List $
+                takeWhile
+                    (\(Number v) -> (step > 0 && v < stop) || (step < 0 && v > stop))
+                    ( map
+                        (\i -> Number (start + step * i))
+                        [0 ..]
+                    )
+apply functionName _ = abort $ BadFunction $ "Call to undefined function: " ++ functionName
 
 -- Helper function for managing environments in list comprehensions. Takes an environment
 -- and an expression and makes a Boa Value monad from it
