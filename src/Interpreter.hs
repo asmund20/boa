@@ -88,6 +88,37 @@ boolToInt :: Bool -> Integer
 boolToInt False = 0
 boolToInt True = 1
 
+lessValue :: Value -> Value -> Either ErrorMessage Bool
+lessValue (Number l) (Number r) = Right $ l < r
+lessValue (Boolean l) (Boolean r) = Right $ l < r
+lessValue (Boolean l) (Number r) = Right $ (boolToInt l) < r
+lessValue (Number l) (Boolean r) = Right $ l < boolToInt r
+lessValue (Text l) (Text r) = Right $ l < r
+lessValue (List []) (List r) = Right $ not $ null r
+lessValue (List l) (List []) = Right False
+lessValue (List (None : ls)) (List (None : rs)) = lessValue (List ls) (List rs)
+lessValue (List (l : ls)) (List (r : rs)) = pure (&&) <*> (lessValue l r) <*> lessValue (List ls) (List rs)
+lessValue l r =
+    Left $
+        "Operator < "
+            ++ " with arguments "
+            ++ show l
+            ++ ", "
+            ++ show r
+            ++ "."
+
+equalValues :: Value -> Value -> Bool
+equalValues None None = True
+equalValues l@(Number _) r@(Number _) = l == r
+equalValues l@(Boolean _) r@(Boolean _) = l == r
+equalValues (Boolean l) (Number r) = (boolToInt l) == r
+equalValues (Number l) (Boolean r) = l == boolToInt r
+equalValues l@(Text _) r@(Text _) = l == r
+equalValues l@(List []) r@(List _) = l == r
+equalValues l@(List _) r@(List []) = l == r
+equalValues (List (l : ls)) (List (r : rs)) = (equalValues l r) && equalValues (List ls) (List rs)
+equalValues _ _ = False
+
 operate ::
     OperationSymbol -> Value -> Value -> Either ErrorMessage Value
 operate Plus (Number l) (Number r) = Right $ Number $ l + r
@@ -167,37 +198,6 @@ operate op v1 v2 =
             ++ ", "
             ++ show v2
             ++ "."
-
-lessValue :: Value -> Value -> Either ErrorMessage Bool
-lessValue (Number l) (Number r) = Right $ l < r
-lessValue (Boolean l) (Boolean r) = Right $ l < r
-lessValue (Boolean l) (Number r) = Right $ (boolToInt l) < r
-lessValue (Number l) (Boolean r) = Right $ l < boolToInt r
-lessValue (Text l) (Text r) = Right $ l < r
-lessValue (List []) (List r) = Right $ not $ null r
-lessValue (List l) (List []) = Right False
-lessValue (List (None : ls)) (List (None : rs)) = lessValue (List ls) (List rs)
-lessValue (List (l : ls)) (List (r : rs)) = pure (&&) <*> (lessValue l r) <*> lessValue (List ls) (List rs)
-lessValue l r =
-    Left $
-        "Operator < "
-            ++ " with arguments "
-            ++ show l
-            ++ ", "
-            ++ show r
-            ++ "."
-
-equalValues :: Value -> Value -> Bool
-equalValues None None = True
-equalValues l@(Number _) r@(Number _) = l == r
-equalValues l@(Boolean _) r@(Boolean _) = l == r
-equalValues (Boolean l) (Number r) = (boolToInt l) == r
-equalValues (Number l) (Boolean r) = l == boolToInt r
-equalValues l@(Text _) r@(Text _) = l == r
-equalValues l@(List []) r@(List _) = l == r
-equalValues l@(List _) r@(List []) = l == r
-equalValues (List (l : ls)) (List (r : rs)) = (equalValues l r) && equalValues (List ls) (List rs)
-equalValues _ _ = False
 
 str :: Value -> String
 str None = "None"
